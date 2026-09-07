@@ -1,12 +1,16 @@
-import { collectFromSources, type OpportunitySource as RawOpportunitySource } from "../domain/source.js";
 import { runRadar, type RadarResult } from "../domain/radar.js";
+import { normalizeOpportunity, type RawOpportunity } from "../domain/normalizer.js";
 import type { CandidateProfile, Opportunity } from "../domain/opportunity.js";
 
 /**
- * Discovery source used by the application layer.
- * Adapters expose raw records; this boundary normalizes and deduplicates them.
+ * Application-level source contract. New integrations should expose fetch();
+ * discover() is retained for already-normalized test/adaptor callers.
  */
-export type OpportunitySource = RawOpportunitySource;
+export interface OpportunitySource {
+  readonly name: string;
+  readonly fetch?: () => Promise<RawOpportunity[]>;
+  readonly discover?: () => Promise<readonly Opportunity[]>;
+}
 
 export interface DiscoveryReport {
   source: string;
@@ -19,20 +23,33 @@ export interface RadarRunResult extends RadarResult {
   reports: DiscoveryReport[];
 }
 
-/**
- * Discover from all configured sources. A source failure is isolated so one
- * unavailable provider cannot prevent the remaining sources from running.
- */
+async function discoverSource(source: OpportunitySource): Promise<Opportunity[]> {
+  if (source.fetch) {
+    const raw = await source.fetch();
+    const normalized: Opportunity[] = [];
+    for (const item of raw) {
+      try {
+        normalized.push(normalizeOpportunity({ ...item, source: item.source || source.name }));
+      } catch {
+        // Ignore malformed records; the source remains usable.
+      }
+    }
+    return normalized;
+  }
+  if (source.discover) return [...await source.discover()];
+  throw new Error(`Source ${source.name} has no fetch or discover implementation`);
+}
+
 export async function discoverAndAnalyze(
   sources: readonly OpportunitySource[],
   profile: CandidateProfile,
 ): Promise<RadarRunResult> {
-  const reports: DiscoveryReport[] = [];
   const all: Opportunity[] = [];
+  const reports: DiscoveryReport[] = [];
 
   for (const source of sources) {
     try {
-      const opportunities = await collectFromSources([source]);
+      const opportunities = await discoverSource(source);
       all.push(...opportunities);
       reports.push({ source: source.name, discovered: opportunities.length, failed: false });
     } catch (error) {
