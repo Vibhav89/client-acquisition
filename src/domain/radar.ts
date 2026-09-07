@@ -10,12 +10,30 @@ export interface RadarResult {
   ranked: RankedOpportunity[];
 }
 
+function normalizeText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function canonicalKey(opportunity: Opportunity): string {
+  try {
+    const url = new URL(opportunity.sourceUrl);
+    url.hash = "";
+    for (const key of [...url.searchParams.keys()]) {
+      if (/^(utm_|ref$|source$|campaign$|tracking)/i.test(key)) url.searchParams.delete(key);
+    }
+    return `${normalizeText(opportunity.source)}|url:${url.toString().replace(/\/$/, "")}`;
+  } catch {
+    const company = normalizeText(opportunity.client?.name ?? "");
+    return `${normalizeText(opportunity.source)}|job:${normalizeText(opportunity.title)}|company:${company}`;
+  }
+}
+
 export function runRadar(
   opportunities: readonly Opportunity[],
   profile: CandidateProfile,
 ): RadarResult {
   const unique = new Map<string, Opportunity>();
-  for (const opportunity of opportunities) unique.set(opportunity.id, opportunity);
+  for (const opportunity of opportunities) unique.set(canonicalKey(opportunity), opportunity);
 
   const analyzed: { opportunity: Opportunity; analysis: OpportunityAnalysis }[] = [];
   for (const opportunity of unique.values()) {
