@@ -1,4 +1,4 @@
-import type { RadarResult } from "../domain/pipeline.js";
+import type { RadarResult } from "../domain/radar.js";
 
 export interface DashboardOpportunity {
   id: string;
@@ -26,7 +26,7 @@ export interface DashboardModel {
   opportunities: DashboardOpportunity[];
 }
 
-function budgetLabel(result: RadarResult): string {
+function budgetLabel(result: RadarResult["ranked"][number]): string {
   const budget = result.opportunity.budget;
   if (!budget) return "Budget not specified";
   const currency = budget.currency.toUpperCase();
@@ -38,31 +38,29 @@ function budgetLabel(result: RadarResult): string {
   return `${currency} (${budget.unit})`;
 }
 
-export function buildDashboardModel(results: readonly RadarResult[]): DashboardModel {
-  const opportunities = [...results]
+export function buildDashboardModel(result: RadarResult): DashboardModel {
+  const opportunities = [...result.ranked]
     .sort((a, b) => b.analysis.match.score - a.analysis.match.score)
-    .map((result) => ({
-      id: result.opportunity.id,
-      title: result.opportunity.title,
-      source: result.opportunity.source,
-      sourceUrl: result.opportunity.sourceUrl,
-      matchScore: result.analysis.match.score,
-      riskLevel: result.analysis.risk.level,
-      recommendation: result.analysis.recommendation,
-      budgetLabel: budgetLabel(result),
-      matchedSkills: [...result.analysis.match.matchedSkills],
+    .map((ranked) => ({
+      id: ranked.opportunity.id,
+      title: ranked.opportunity.title,
+      source: ranked.opportunity.source,
+      sourceUrl: ranked.opportunity.sourceUrl,
+      matchScore: ranked.analysis.match.score,
+      riskLevel: ranked.analysis.risk.level,
+      recommendation: ranked.analysis.recommendation,
+      budgetLabel: budgetLabel(ranked),
+      matchedSkills: [...ranked.analysis.match.matchedSkills],
     }));
 
   return {
     summary: {
-      discovered: opportunities.length,
-      qualified: results.filter((r) => r.analysis.recommendation === "apply").length,
-      review: results.filter((r) => r.analysis.recommendation === "review").length,
-      skipped: results.filter((r) => r.analysis.recommendation === "skip").length,
-      lowRisk: results.filter((r) => r.analysis.risk.level === "low").length,
-      pendingProposalReview: results.filter(
-        (r) => r.analysis.recommendation === "apply" && r.proposal !== undefined,
-      ).length,
+      discovered: result.discovered,
+      qualified: result.ranked.filter((r) => r.analysis.recommendation === "apply").length,
+      review: result.ranked.filter((r) => r.analysis.recommendation === "review").length,
+      skipped: result.ranked.filter((r) => r.analysis.recommendation === "skip").length,
+      lowRisk: result.ranked.filter((r) => r.analysis.risk.level === "low").length,
+      pendingProposalReview: result.ranked.filter((r) => r.analysis.recommendation === "apply").length,
     },
     opportunities,
   };
