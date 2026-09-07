@@ -43,7 +43,7 @@ export class SupabasePersistence implements PersistencePort {
   }
 
   async getOpportunity(id: string): Promise<Opportunity | undefined> {
-    const { data, error } = await this.client.from("opportunities").select("*").eq("id", id);
+    const { data, error } = await this.client.from("opportunities").select("*").eq("id", id).eq("user_id", this.userId);
     if (error) throw new Error(`Failed to read opportunity: ${error.message}`);
     const row = data?.[0] as Record<string, unknown> | undefined;
     return row ? this.fromRow(row) : undefined;
@@ -62,12 +62,14 @@ export class SupabasePersistence implements PersistencePort {
   }
 
   private fromRow(row: Record<string, unknown>): Opportunity {
+    const budget = row.budget && typeof row.budget === "object" ? row.budget as Opportunity["budget"] : undefined;
+    const client = row.client && typeof row.client === "object" ? row.client as Opportunity["client"] : undefined;
     return {
       id: String(row.id), source: String(row.source), sourceUrl: String(row.source_url), title: String(row.title), description: String(row.description),
       skills: Array.isArray(row.skills) ? row.skills.map(String) : [], workMode: row.work_mode as Opportunity["workMode"],
       ...(typeof row.location === "string" ? { location: row.location } : {}),
-      ...(row.budget && typeof row.budget === "object" ? { budget: row.budget as Opportunity["budget"] } : {}),
-      ...(row.client && typeof row.client === "object" ? { client: row.client as Opportunity["client"] } : {}),
+      ...(budget === undefined ? {} : { budget }),
+      ...(client === undefined ? {} : { client }),
       status: row.status as Opportunity["status"], discoveredAt: String(row.discovered_at),
     };
   }
