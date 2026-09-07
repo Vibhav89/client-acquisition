@@ -30,9 +30,7 @@ function budgetLabel(result: RadarResult["ranked"][number]): string {
   const budget = result.opportunity.budget;
   if (!budget) return "Budget not specified";
   const currency = budget.currency.toUpperCase();
-  if (budget.min !== undefined && budget.max !== undefined) {
-    return `${currency} ${budget.min}-${budget.max}/${budget.unit}`;
-  }
+  if (budget.min !== undefined && budget.max !== undefined) return `${currency} ${budget.min}-${budget.max}/${budget.unit}`;
   if (budget.max !== undefined) return `Up to ${currency} ${budget.max}/${budget.unit}`;
   if (budget.min !== undefined) return `From ${currency} ${budget.min}/${budget.unit}`;
   return `${currency} (${budget.unit})`;
@@ -58,7 +56,7 @@ export function buildDashboardModel(result: RadarResult): DashboardModel {
       discovered: result.discovered,
       qualified: result.ranked.filter((r) => r.analysis.recommendation === "apply").length,
       review: result.ranked.filter((r) => r.analysis.recommendation === "review").length,
-      skipped: result.ranked.filter((r) => r.analysis.recommendation === "skip").length,
+      skipped: result.skipped,
       lowRisk: result.ranked.filter((r) => r.analysis.risk.level === "low").length,
       pendingProposalReview: result.ranked.filter((r) => r.analysis.recommendation === "apply").length,
     },
