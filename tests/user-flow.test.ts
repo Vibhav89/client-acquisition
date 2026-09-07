@@ -54,10 +54,15 @@ const jobs: Opportunity[] = [
 
 describe("simulated user radar flow", () => {
   it("ranks a good job, rejects a scam, and deprioritizes a poor fit", () => {
-    const results = analyzeExisting(jobs, profile);
-    expect(results[0]?.opportunity.id).toBe("good");
-    expect(results.find((r) => r.opportunity.id === "scam")?.analysis.recommendation).toBe("skip");
-    expect(results.find((r) => r.opportunity.id === "weak")?.analysis.recommendation).toBe("skip");
-    expect(results[0]?.proposal?.body).toContain("TypeScript");
+    const result = analyzeExisting(jobs, profile);
+    const good = result.ranked.find((r) => r.opportunity.id === "good");
+    const scam = result.ranked.find((r) => r.opportunity.id === "scam");
+    const weak = result.ranked.find((r) => r.opportunity.id === "weak");
+
+    expect(result.discovered).toBe(3);
+    expect(result.ranked[0]?.opportunity.id).toBe("good");
+    expect(scam?.analysis.recommendation).toBe("skip");
+    expect(weak?.analysis.recommendation).toBe("skip");
+    expect(good?.analysis.recommendation).toBe("apply");
   });
 });
