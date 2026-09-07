@@ -11,7 +11,7 @@ const job: Opportunity = {
   sourceUrl: "https://example.com/good-job",
   title: "Remote React TypeScript AI developer",
   description: "Build an AI dashboard with React and TypeScript.",
-  skills: ["React", "TypeScript", "AI"],
+  skills: ["TypeScript", "JavaScript", "React", "Next.js", "Node.js", "Supabase", "PostgreSQL", "AI", "LLM", "OpenAI", "API integration", "GitHub"],
   workMode: "remote",
   budget: { currency: "USD", min: 25, max: 40, unit: "hour" },
   status: "new",
