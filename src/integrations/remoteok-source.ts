@@ -57,13 +57,13 @@ export class RemoteOkSource {
         const company = typeof job.company === "string" ? job.company.trim() : "";
         const description = typeof job.description === "string" ? stripHtml(job.description) : "";
         return {
-          id: job.id ? `remoteok:${job.id}` : `remoteok:${url}`,
+          ...(job.id ? { id: `remoteok:${job.id}` } : { id: `remoteok:${url}` }),
           source: this.name,
           url,
           title: company ? `${title} — ${company}` : title,
           description,
           skills: tags,
-          location: typeof job.location === "string" ? job.location.trim() : undefined,
+          ...(typeof job.location === "string" && job.location.trim() ? { location: job.location.trim() } : {}),
           workMode: "remote",
         };
       });
