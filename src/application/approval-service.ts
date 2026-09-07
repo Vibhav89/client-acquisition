@@ -6,27 +6,21 @@ import { sanitizeProposalInput } from "../domain/security.js";
 import type { PersistencePort } from "../domain/persistence.js";
 
 export interface ApprovalService {
-  createForRadar(result: RadarResult, profile: CandidateProfile, now?: string): ApprovalRequest[];
-  approve(id: string, now?: string): ApprovalRequest;
-  reject(id: string, now?: string): ApprovalRequest;
+  createForRadar(result: RadarResult, profile: CandidateProfile, now?: string): Promise<ApprovalRequest[]>;
+  approve(id: string, now?: string): Promise<ApprovalRequest>;
+  reject(id: string, now?: string): Promise<ApprovalRequest>;
 }
 
 export class DefaultApprovalService implements ApprovalService {
   constructor(private readonly persistence: PersistencePort) {}
 
-  createForRadar(result: RadarResult, profile: CandidateProfile, now = new Date().toISOString()): ApprovalRequest[] {
+  async createForRadar(result: RadarResult, profile: CandidateProfile, now = new Date().toISOString()): Promise<ApprovalRequest[]> {
     const created: ApprovalRequest[] = [];
+    const pending = await this.persistence.listPendingApprovals();
     for (const ranked of result.ranked) {
       if (ranked.analysis.recommendation !== "apply") continue;
-
-      const existing = this.persistence.listPendingApprovals().find(
-        (request) => request.opportunityId === ranked.opportunity.id,
-      );
-      if (existing) {
-        created.push(existing);
-        continue;
-      }
-
+      const existing = pending.find((request) => request.opportunityId === ranked.opportunity.id);
+      if (existing) { created.push(existing); continue; }
       const proposal = draftProposal(ranked.opportunity, profile);
       const request: ApprovalRequest = {
         id: `approval:${ranked.opportunity.id}`,
@@ -35,29 +29,29 @@ export class DefaultApprovalService implements ApprovalService {
         state: "draft",
         createdAt: now,
       };
-      const pending = transitionApproval(request, "pending", now);
-      this.persistence.saveApproval(pending);
-      created.push(pending);
+      const next = transitionApproval(request, "pending", now);
+      await this.persistence.saveApproval(next);
+      created.push(next);
     }
     return created;
   }
 
-  approve(id: string, now = new Date().toISOString()): ApprovalRequest {
-    const request = this.findPending(id);
+  async approve(id: string, now = new Date().toISOString()): Promise<ApprovalRequest> {
+    const request = await this.findPending(id);
     const approved = transitionApproval(request, "approved", now);
-    this.persistence.saveApproval(approved);
+    await this.persistence.saveApproval(approved);
     return approved;
   }
 
-  reject(id: string, now = new Date().toISOString()): ApprovalRequest {
-    const request = this.findPending(id);
+  async reject(id: string, now = new Date().toISOString()): Promise<ApprovalRequest> {
+    const request = await this.findPending(id);
     const rejected = transitionApproval(request, "rejected", now);
-    this.persistence.saveApproval(rejected);
+    await this.persistence.saveApproval(rejected);
     return rejected;
   }
 
-  private findPending(id: string): ApprovalRequest {
-    const request = this.persistence.listPendingApprovals().find((item) => item.id === id);
+  private async findPending(id: string): Promise<ApprovalRequest> {
+    const request = (await this.persistence.listPendingApprovals()).find((item) => item.id === id);
     if (!request) throw new Error(`Pending approval not found: ${id}`);
     return request;
   }
