@@ -3,6 +3,7 @@ import { runClientRadar } from "../src/application/client-radar.js";
 import { defaultCandidateProfile } from "../src/domain/profile.js";
 import { InMemoryPersistence } from "../src/domain/persistence.js";
 import type { Opportunity } from "../src/domain/opportunity.js";
+import type { RawOpportunity } from "../src/domain/normalizer.js";
 
 const job: Opportunity = {
   id: "good-job",
@@ -25,12 +26,39 @@ const scam: Opportunity = {
   description: "Pay a registration fee before receiving the project.",
 };
 
+const rawJob: RawOpportunity = {
+  id: job.id,
+  source: job.source,
+  url: job.sourceUrl,
+  title: job.title,
+  description: job.description,
+  skills: job.skills,
+  workMode: job.workMode,
+  currency: job.budget?.currency,
+  min: job.budget?.min,
+  max: job.budget?.max,
+  unit: job.budget?.unit,
+};
+
+const rawScam: RawOpportunity = {
+  ...rawJob,
+  id: scam.id,
+  url: scam.sourceUrl,
+  title: scam.title,
+  description: scam.description,
+};
+
+// exactOptionalPropertyTypes: do not pass undefined-valued optional fields.
+const fixtureSource = {
+  name: "fixture",
+  fetch: async (): Promise<RawOpportunity[]> => [rawJob, rawScam],
+};
+
 describe("runClientRadar", () => {
   it("persists discovered work and creates approval requests without sending anything", async () => {
     const persistence = new InMemoryPersistence();
-    const source = { name: "fixture", discover: async () => [job, scam] };
 
-    const run = await runClientRadar([source], defaultCandidateProfile, persistence, "2026-09-07T12:00:00Z");
+    const run = await runClientRadar([fixtureSource], defaultCandidateProfile, persistence, "2026-09-07T12:00:00Z");
 
     expect(run.dashboard.summary.discovered).toBe(2);
     expect(run.dashboard.summary.skipped).toBe(1);
