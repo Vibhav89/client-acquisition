@@ -15,3 +15,6 @@ export * from "./domain/source.js";
 export * from "./domain/persistence.js";
 export * from "./domain/security.js";
 export * from "./integrations/supabase-repository.js";
+export * from "./integrations/remoteok-source.js";
+export * from "./integrations/remotive-source.js";
+export * from "./integrations/opportunity-source-adapter.js";
