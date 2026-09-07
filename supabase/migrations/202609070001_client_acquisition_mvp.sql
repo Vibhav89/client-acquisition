@@ -7,6 +7,7 @@ create table if not exists public.profiles (
   evidence jsonb not null default '[]'::jsonb,
   preferred_work_modes text[] not null default '{}',
   minimum_hourly_usd numeric(12,2),
+  minimum_fixed_usd numeric(12,2),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
