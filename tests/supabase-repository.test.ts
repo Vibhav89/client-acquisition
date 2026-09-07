@@ -62,7 +62,7 @@ describe("SupabasePersistence", () => {
     await store.saveOpportunity(opportunity);
     const found = await store.getOpportunity("job-1");
     expect(found?.title).toBe("React Engineer");
-    expect((await store.listOpportunities())).toHaveLength(1);
+    expect(await store.listOpportunities()).toHaveLength(1);
   });
 
   it("persists and filters pending approvals", async () => {
@@ -70,6 +70,6 @@ describe("SupabasePersistence", () => {
     const store = new SupabasePersistence(client, "user-1");
     await store.saveOpportunity(opportunity);
     await store.saveApproval(approval);
-    expect((await store.listPendingApprovals())).map((item) => item.id).toEqual(["approval:job-1"]);
+    expect((await store.listPendingApprovals()).map((item) => item.id)).toEqual(["approval:job-1"]);
   });
 });
