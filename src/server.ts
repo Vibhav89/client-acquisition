@@ -20,7 +20,14 @@ const developmentPersistence = new InMemoryPersistence();
 const sources = createDefaultPublicSources();
 const supabaseUrl = process.env.SUPABASE_URL?.trim();
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim();
-const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
+const hasSupabaseUrl = Boolean(supabaseUrl);
+const hasSupabaseKey = Boolean(supabaseAnonKey);
+const supabaseConfigured = hasSupabaseUrl && hasSupabaseKey;
+const partialSupabaseConfig = hasSupabaseUrl !== hasSupabaseKey;
+const productionMode = process.env.NODE_ENV === "production";
+if (partialSupabaseConfig || (productionMode && !supabaseConfigured)) {
+  throw new Error("Production requires both SUPABASE_URL and SUPABASE_ANON_KEY; partial configuration is not allowed.");
+}
 
 const mime: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
