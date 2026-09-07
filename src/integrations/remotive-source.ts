@@ -1,5 +1,6 @@
 import type { RawOpportunity } from "../domain/normalizer.js";
 import type { FetchLike } from "./remoteok-source.js";
+export type { FetchLike } from "./remoteok-source.js";
 
 interface RemotiveJob {
   id?: number | string;
@@ -49,13 +50,15 @@ export class RemotiveSource {
       .filter((item): item is RemotiveJob => typeof item === "object" && item !== null)
       .filter((job) => typeof job.url === "string")
       .map((job) => ({
-        id: job.id === undefined ? undefined : `remotive:${job.id}`,
+        ...(job.id === undefined ? {} : { id: `remotive:${job.id}` }),
         source: this.name,
         url: job.url as string,
         title: typeof job.title === "string" ? job.title : "Remote opportunity",
         description: typeof job.description === "string" ? stripHtml(job.description) : "",
         skills: Array.isArray(job.tags) ? job.tags.filter((tag): tag is string => typeof tag === "string") : [],
-        location: typeof job.candidate_required_location === "string" ? job.candidate_required_location : undefined,
+        ...(typeof job.candidate_required_location === "string" && job.candidate_required_location.trim()
+          ? { location: job.candidate_required_location.trim() }
+          : {}),
         workMode: "remote",
       }));
   }
