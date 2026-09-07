@@ -6,6 +6,10 @@ export interface AuthConfig {
   supabaseAnonKey?: string;
 }
 
+function storage(): Storage | undefined {
+  try { return window.sessionStorage; } catch { return undefined; }
+}
+
 export async function getAuthConfig(): Promise<AuthConfig> {
   const response = await fetch("/api/config", { cache: "no-store" });
   if (!response.ok) throw new Error(`Configuration request failed (${response.status})`);
@@ -13,15 +17,11 @@ export async function getAuthConfig(): Promise<AuthConfig> {
 }
 
 export function getAccessToken(): string | undefined {
-  try {
-    return localStorage.getItem(TOKEN_KEY) ?? undefined;
-  } catch {
-    return undefined;
-  }
+  return storage()?.getItem(TOKEN_KEY) ?? undefined;
 }
 
 export function clearAccessToken(): void {
-  try { localStorage.removeItem(TOKEN_KEY); } catch { /* unavailable storage */ }
+  storage()?.removeItem(TOKEN_KEY);
 }
 
 export async function signInWithPassword(config: AuthConfig, email: string, password: string): Promise<void> {
@@ -33,13 +33,12 @@ export async function signInWithPassword(config: AuthConfig, email: string, pass
     headers: { apikey: config.supabaseAnonKey, "content-type": "application/json" },
     body: JSON.stringify({ email, password }),
   });
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(text || `Sign-in failed (${response.status})`);
-  }
+  if (!response.ok) throw new Error("Sign-in failed. Check the email and password and try again.");
   const value = await response.json() as { access_token?: unknown };
   if (typeof value.access_token !== "string" || !value.access_token) throw new Error("Supabase did not return an access token");
-  localStorage.setItem(TOKEN_KEY, value.access_token);
+  const target = storage();
+  if (!target) throw new Error("Browser session storage is unavailable");
+  target.setItem(TOKEN_KEY, value.access_token);
 }
 
 export function authHeaders(): HeadersInit {
