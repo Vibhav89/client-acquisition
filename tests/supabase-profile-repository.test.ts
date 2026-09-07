@@ -3,13 +3,18 @@ import { SupabaseProfilePersistence } from "../src/integrations/supabase-profile
 import type { SupabaseClientLike } from "../src/integrations/supabase-repository.js";
 import { defaultCandidateProfile } from "../src/domain/profile.js";
 
+type QueryResult = { data: unknown[] | null; error: { message: string } | null };
+
 function fakeClient(rows: unknown[]): SupabaseClientLike {
   return {
     from: () => {
       const builder = {
         eq: () => builder,
         order: async () => ({ data: rows, error: null }),
-        then: (resolve: (value: { data: unknown[]; error: null }) => unknown) => Promise.resolve({ data: rows, error: null }).then(resolve),
+        then: <TResult1 = QueryResult, TResult2 = never>(
+          onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
+          onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+        ): PromiseLike<TResult1 | TResult2> => Promise.resolve({ data: rows, error: null }).then(onfulfilled ?? undefined, onrejected ?? undefined),
       };
       return {
         upsert: async () => ({ error: null }),
