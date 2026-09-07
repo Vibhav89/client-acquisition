@@ -16,6 +16,7 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run typecheck
+      - run: npm run build
       - name: Run tests
         run: npm test -- --reporter=verbose 2>&1 | tee test-output.log
       - name: Upload test diagnostics
