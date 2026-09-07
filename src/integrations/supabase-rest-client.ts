@@ -2,7 +2,6 @@ import type { SupabaseClientLike } from "./supabase-repository.js";
 
 type FetchLike = typeof fetch;
 type QueryResult = { data: unknown[] | null; error: { message: string } | null };
-type QueryBuilder = ReturnType<SupabaseRestClient["from"]>["select"] extends (...args: never[]) => infer R ? R : never;
 
 function encode(value: string): string {
   return encodeURIComponent(value);
