@@ -3,35 +3,40 @@ import { SupabasePersistence, type SupabaseClientLike } from "../src/integration
 import type { Opportunity } from "../src/domain/opportunity.js";
 import type { ApprovalRequest } from "../src/domain/approval.js";
 
+type Row = Record<string, unknown>;
+type QueryResult = { data: Row[]; error: null };
+
 function fakeClient() {
-  const rows: Record<string, unknown>[] = [];
+  const rows: Row[] = [];
   const client: SupabaseClientLike = {
-    from(table) {
+    from(table: string) {
       return {
-        upsert(values) {
+        upsert(values: Row | Row[]) {
           const incoming = Array.isArray(values) ? values : [values];
           for (const value of incoming) {
             const key = table === "opportunities"
               ? `${value.user_id}:${value.source}:${value.source_url}`
               : String(value.id);
-            const index = rows.findIndex((row) => String(row.__key) === key);
+            const index = rows.findIndex((row) => String(row.__key) === key && row.__table === table);
             const next = { ...value, __table: table, __key: key };
             if (index >= 0) rows[index] = next; else rows.push(next);
           }
           return Promise.resolve({ error: null });
         },
         select() {
+          let filtered = rows.filter((row) => row.__table === table);
           const builder = {
             eq(column: string, value: string) {
-              const filtered = rows.filter((row) => row.__table === table && String(row[column]) === value);
-              return Promise.resolve({ data: filtered, error: null });
+              filtered = filtered.filter((row) => String(row[column]) === value);
+              return builder;
             },
             order() {
-              const filtered = rows.filter((row) => row.__table === table);
               return Promise.resolve({ data: filtered, error: null });
             },
-            then(onfulfilled, onrejected) {
-              const filtered = rows.filter((row) => row.__table === table);
+            then<TResult1 = QueryResult, TResult2 = never>(
+              onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
+              onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+            ): Promise<TResult1 | TResult2> {
               return Promise.resolve({ data: filtered, error: null }).then(onfulfilled, onrejected);
             },
           };
