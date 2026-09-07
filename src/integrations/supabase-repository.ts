@@ -43,7 +43,7 @@ export class SupabasePersistence implements PersistencePort {
   }
 
   async getOpportunity(id: string): Promise<Opportunity | undefined> {
-    const { data, error } = await this.client.from("opportunities").select("*").eq("id", id).eq("user_id", this.userId);
+    const { data, error } = await this.client.from("opportunities").select("*").eq("id", id);
     if (error) throw new Error(`Failed to read opportunity: ${error.message}`);
     const row = data?.[0] as Record<string, unknown> | undefined;
     return row ? this.fromRow(row) : undefined;
