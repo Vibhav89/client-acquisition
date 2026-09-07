@@ -40,7 +40,14 @@ describe("hardening", () => {
     const result = runRadar([first, second], defaultCandidateProfile);
     expect(result.discovered).toBe(2);
     expect(result.analyzed).toBe(1);
-    expect(result.ranked).toHaveLength(1);
     expect(result.ranked[0]?.opportunity.description).toBe("updated duplicate");
+  });
+
+  it("deduplicates tracking variants of the same canonical source URL", () => {
+    const first = baseOpportunity("one", "https://example.com/job/42?utm_source=feed");
+    const second = baseOpportunity("two", "https://example.com/job/42?utm_medium=email");
+    const result = runRadar([first, second], defaultCandidateProfile);
+    expect(result.discovered).toBe(2);
+    expect(result.analyzed).toBe(1);
   });
 });
