@@ -2,32 +2,26 @@ import type { ApprovalRequest } from "../domain/approval.js";
 import type { Opportunity } from "../domain/opportunity.js";
 import type { PersistencePort } from "../domain/persistence.js";
 
+type QueryResult = { data: unknown[] | null; error: { message: string } | null };
+interface QueryBuilder extends PromiseLike<QueryResult> {
+  eq(column: string, value: string): QueryBuilder;
+  order(column: string, options?: { ascending?: boolean }): PromiseLike<QueryResult>;
+}
 export interface SupabaseClientLike {
   from(table: string): {
     upsert(values: Record<string, unknown> | Record<string, unknown>[], options?: { onConflict?: string }): PromiseLike<{ error: { message: string } | null }>;
-    select(columns?: string): {
-      eq(column: string, value: string): {
-        order(column: string, options?: { ascending?: boolean }): PromiseLike<{ data: unknown[] | null; error: { message: string } | null }>;
-      };
-    };
+    select(columns?: string): QueryBuilder;
   };
 }
 
 function opportunityRow(userId: string, opportunity: Opportunity): Record<string, unknown> {
   return {
-    id: opportunity.id,
-    user_id: userId,
-    source: opportunity.source,
-    source_url: opportunity.sourceUrl,
-    title: opportunity.title,
-    description: opportunity.description,
-    skills: opportunity.skills,
-    work_mode: opportunity.workMode,
+    id: opportunity.id, user_id: userId, source: opportunity.source, source_url: opportunity.sourceUrl,
+    title: opportunity.title, description: opportunity.description, skills: opportunity.skills, work_mode: opportunity.workMode,
     ...(opportunity.location === undefined ? {} : { location: opportunity.location }),
     ...(opportunity.budget === undefined ? {} : { budget: opportunity.budget }),
     ...(opportunity.client === undefined ? {} : { client: opportunity.client }),
-    status: opportunity.status,
-    discovered_at: opportunity.discoveredAt,
+    status: opportunity.status, discovered_at: opportunity.discoveredAt,
   };
 }
 
@@ -41,12 +35,8 @@ export class SupabasePersistence implements PersistencePort {
 
   async saveApproval(request: ApprovalRequest): Promise<void> {
     const { error } = await this.client.from("approval_requests").upsert({
-      id: request.id,
-      user_id: this.userId,
-      opportunity_id: request.opportunityId,
-      proposal: request.proposal,
-      state: request.state,
-      created_at: request.createdAt,
+      id: request.id, user_id: this.userId, opportunity_id: request.opportunityId, proposal: request.proposal,
+      state: request.state, created_at: request.createdAt,
       ...(request.decidedAt === undefined ? {} : { decided_at: request.decidedAt }),
     });
     if (error) throw new Error(`Failed to save approval: ${error.message}`);
@@ -73,9 +63,8 @@ export class SupabasePersistence implements PersistencePort {
 
   private fromRow(row: Record<string, unknown>): Opportunity {
     return {
-      id: String(row.id), source: String(row.source), sourceUrl: String(row.source_url), title: String(row.title),
-      description: String(row.description), skills: Array.isArray(row.skills) ? row.skills.map(String) : [],
-      workMode: row.work_mode as Opportunity["workMode"],
+      id: String(row.id), source: String(row.source), sourceUrl: String(row.source_url), title: String(row.title), description: String(row.description),
+      skills: Array.isArray(row.skills) ? row.skills.map(String) : [], workMode: row.work_mode as Opportunity["workMode"],
       ...(typeof row.location === "string" ? { location: row.location } : {}),
       ...(row.budget && typeof row.budget === "object" ? { budget: row.budget as Opportunity["budget"] } : {}),
       ...(row.client && typeof row.client === "object" ? { client: row.client as Opportunity["client"] } : {}),
@@ -85,9 +74,8 @@ export class SupabasePersistence implements PersistencePort {
 
   private approvalFromRow(row: Record<string, unknown>): ApprovalRequest {
     return {
-      id: String(row.id), opportunityId: String(row.opportunity_id), proposal: String(row.proposal),
-      state: row.state as ApprovalRequest["state"], createdAt: String(row.created_at),
-      ...(typeof row.decided_at === "string" ? { decidedAt: row.decided_at } : {}),
+      id: String(row.id), opportunityId: String(row.opportunity_id), proposal: String(row.proposal), state: row.state as ApprovalRequest["state"],
+      createdAt: String(row.created_at), ...(typeof row.decided_at === "string" ? { decidedAt: row.decided_at } : {}),
     };
   }
 }
