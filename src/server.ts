@@ -19,56 +19,47 @@ const mime: Record<string, string> = {
   ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon",
 };
 
-function send(res: ServerResponse, status: number, body: unknown): void {
+function sendJson(res: ServerResponse, status: number, value: unknown): void {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
-  res.end(JSON.stringify(body));
+  res.end(JSON.stringify(value));
 }
 
-async function body(req: IncomingMessage): Promise<Record<string, unknown>> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of req) chunks.push(Buffer.from(chunk));
-  if (chunks.length === 0) return {};
-  const parsed: unknown = JSON.parse(Buffer.concat(chunks).toString("utf8"));
-  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Invalid JSON body");
-  return parsed as Record<string, unknown>;
-}
-
-async function handleApi(req: IncomingMessage, res: ServerResponse, url: URL): Promise<boolean> {
-  if (url.pathname === "/api/health" && req.method === "GET") {
-    send(res, 200, { ok: true, service: "client-acquisition" });
-    return true;
-  }
-
-  if (url.pathname === "/api/radar" && req.method === "GET") {
-    const run = await runClientRadar(sources, defaultCandidateProfile, persistence);
-    send(res, 200, run);
-    return true;
-  }
-
-  const approvalMatch = url.pathname.match(/^\/api\/approvals\/([^/]+)\/(approve|reject)$/);
-  if (approvalMatch && req.method === "POST") {
-    const id = decodeURIComponent(approvalMatch[1] ?? "");
-    const action = approvalMatch[2];
-    const request = action === "approve" ? await approvalService.approve(id) : await approvalService.reject(id);
-    send(res, 200, request);
-    return true;
-  }
-
-  return false;
-}
-
-const server = createServer(async (req, res) => {
+export async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   try {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     if (url.pathname.startsWith("/api/")) {
-      if (await handleApi(req, res, url)) return;
-      send(res, 404, { error: "API route not found" });
+      if (url.pathname === "/api/health" && req.method === "GET") {
+        sendJson(res, 200, { ok: true, service: "client-acquisition" });
+        return;
+      }
+
+      if (url.pathname === "/api/radar" && req.method === "GET") {
+        const run = await runClientRadar(sources, defaultCandidateProfile, persistence);
+        sendJson(res, 200, run);
+        return;
+      }
+
+      const approvalMatch = url.pathname.match(/^\/api\/approvals\/([^/]+)\/(approve|reject)$/);
+      if (approvalMatch && req.method === "POST") {
+        const id = decodeURIComponent(approvalMatch[1] ?? "");
+        const action = approvalMatch[2];
+        const request = action === "approve" ? await approvalService.approve(id) : await approvalService.reject(id);
+        sendJson(res, 200, request);
+        return;
+      }
+
+      sendJson(res, 404, { error: "API route not found" });
       return;
     }
 
-    if (req.method !== "GET") { send(res, 405, { error: "Method not allowed" }); return; }
+    if (req.method !== "GET") {
+      sendJson(res, 405, { error: "Method not allowed" });
+      return;
+    }
+
     const requested = url.pathname === "/" ? "/index.html" : url.pathname;
-    const safePath = normalize(requested).replace(/^([.][.][\\/])+/, "");
+    const normalized = normalize(requested).replace(/^([.][.][\\/])+/, "");
+    const safePath = normalized.replace(/^[/\\]+/, "");
     const filePath = join(root, safePath);
     try {
       const data = await readFile(filePath);
@@ -80,8 +71,14 @@ const server = createServer(async (req, res) => {
       res.end(data);
     }
   } catch (error) {
-    send(res, 500, { error: error instanceof Error ? error.message : "Internal server error" });
+    if (!res.headersSent) sendJson(res, 500, { error: error instanceof Error ? error.message : "Internal server error" });
   }
-});
+}
 
-server.listen(port, () => console.log(`Client Radar running at http://localhost:${port}`));
+export function createAppServer() {
+  return createServer((req, res) => void handleRequest(req, res));
+}
+
+if (process.argv[1] === fileURLToPath(import.meta.url)) {
+  createAppServer().listen(port, () => console.log(`Client Radar running at http://localhost:${port}`));
+}
