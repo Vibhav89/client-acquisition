@@ -8,8 +8,11 @@ import { defaultCandidateProfile } from "./domain/profile.js";
 import { InMemoryPersistence } from "./domain/persistence.js";
 import { createDefaultPublicSources } from "./integrations/public-sources.js";
 import { SupabasePersistence } from "./integrations/supabase-repository.js";
+import { SupabaseProfilePersistence } from "./integrations/supabase-profile-repository.js";
 import { getSupabaseAuthUser, SupabaseRestClient } from "./integrations/supabase-rest-client.js";
+import type { CandidateProfile } from "./domain/opportunity.js";
 import type { PersistencePort } from "./domain/persistence.js";
+import type { ProfilePersistencePort } from "./domain/profile-persistence.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const root = fileURLToPath(new URL("../dist", import.meta.url));
@@ -36,13 +39,29 @@ function bearerToken(req: IncomingMessage): string | undefined {
   return token || undefined;
 }
 
-async function requestPersistence(req: IncomingMessage): Promise<PersistencePort | undefined> {
-  if (!supabaseConfigured) return developmentPersistence;
+interface RequestContext {
+  persistence: PersistencePort;
+  profilePersistence: ProfilePersistencePort;
+}
+
+async function requestContext(req: IncomingMessage): Promise<RequestContext | undefined> {
+  if (!supabaseConfigured) return { persistence: developmentPersistence, profilePersistence: { getProfile: () => undefined, saveProfile: () => undefined } };
   const token = bearerToken(req);
   if (!token) return undefined;
   const user = await getSupabaseAuthUser(supabaseUrl!, supabaseAnonKey!, token);
   if (!user) return undefined;
-  return new SupabasePersistence(new SupabaseRestClient(supabaseUrl!, supabaseAnonKey!, token), user.id);
+  const client = new SupabaseRestClient(supabaseUrl!, supabaseAnonKey!, token);
+  return {
+    persistence: new SupabasePersistence(client, user.id),
+    profilePersistence: new SupabaseProfilePersistence(client, user.id),
+  };
+}
+
+async function loadProfile(profilePersistence: ProfilePersistencePort): Promise<CandidateProfile> {
+  const saved = await profilePersistence.getProfile();
+  if (saved) return saved;
+  await profilePersistence.saveProfile(defaultCandidateProfile);
+  return defaultCandidateProfile;
 }
 
 export async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -54,14 +73,15 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse): 
         return;
       }
 
-      const persistence = await requestPersistence(req);
-      if (!persistence) {
+      const context = await requestContext(req);
+      if (!context) {
         sendJson(res, 401, { error: "Authentication required" });
         return;
       }
 
       if (url.pathname === "/api/radar" && req.method === "GET") {
-        const run = await runClientRadar(sources, defaultCandidateProfile, persistence);
+        const profile = await loadProfile(context.profilePersistence);
+        const run = await runClientRadar(sources, profile, context.persistence);
         sendJson(res, 200, run);
         return;
       }
@@ -70,7 +90,7 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse): 
       if (approvalMatch && req.method === "POST") {
         const id = decodeURIComponent(approvalMatch[1] ?? "");
         const action = approvalMatch[2];
-        const approvalService = new DefaultApprovalService(persistence);
+        const approvalService = new DefaultApprovalService(context.persistence);
         const request = action === "approve" ? await approvalService.approve(id) : await approvalService.reject(id);
         sendJson(res, 200, request);
         return;
