@@ -13,24 +13,15 @@ export interface ClientRadarRun {
 }
 
 export async function runClientRadar(
-  sources: readonly OpportunitySource[],
-  profile: CandidateProfile,
-  persistence: PersistencePort,
+  sources: readonly OpportunitySource[], profile: CandidateProfile, persistence: PersistencePort,
   now = new Date().toISOString(),
 ): Promise<ClientRadarRun> {
   const result = await discoverAndAnalyze(sources, profile);
-
-  for (const ranked of result.ranked) {
-    persistence.saveOpportunity(ranked.opportunity);
-  }
-
+  for (const ranked of result.ranked) await persistence.saveOpportunity(ranked.opportunity);
   const approvalService = new DefaultApprovalService(persistence);
-  const approvals = approvalService.createForRadar(result, profile, now);
-
+  const approvals = await approvalService.createForRadar(result, profile, now);
   return {
-    dashboard: buildDashboardModel(result),
-    approvals,
-    opportunities: result.ranked.map((ranked) => ranked.opportunity),
-    reports: result.reports,
+    dashboard: buildDashboardModel(result), approvals,
+    opportunities: result.ranked.map((ranked) => ranked.opportunity), reports: result.reports,
   };
 }
