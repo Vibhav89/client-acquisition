@@ -29,7 +29,12 @@ export function normalizeOpportunity(raw: RawOpportunity, discoveredAt = new Dat
 
   const skills = [...new Set((raw.skills ?? []).map((skill) => skill.trim()).filter(Boolean))];
   const budget = raw.currency || raw.min !== undefined || raw.max !== undefined
-    ? { currency: raw.currency ?? "UNKNOWN", min: raw.min, max: raw.max, unit: raw.unit ?? "unknown" }
+    ? {
+        currency: raw.currency ?? "UNKNOWN",
+        ...(raw.min !== undefined ? { min: raw.min } : {}),
+        ...(raw.max !== undefined ? { max: raw.max } : {}),
+        unit: raw.unit ?? "unknown",
+      }
     : undefined;
 
   return {
