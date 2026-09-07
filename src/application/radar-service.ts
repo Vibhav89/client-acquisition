@@ -2,10 +2,6 @@ import { runRadar, type RadarResult } from "../domain/radar.js";
 import { normalizeOpportunity, type RawOpportunity } from "../domain/normalizer.js";
 import type { CandidateProfile, Opportunity } from "../domain/opportunity.js";
 
-/**
- * Application-level source contract. New integrations should expose fetch();
- * discover() is retained for already-normalized test/adaptor callers.
- */
 export interface OpportunitySource {
   readonly name: string;
   readonly fetch?: () => Promise<RawOpportunity[]>;
@@ -23,9 +19,25 @@ export interface RadarRunResult extends RadarResult {
   reports: DiscoveryReport[];
 }
 
+const SOURCE_TIMEOUT_MS = 15_000;
+
+async function withTimeout<T>(operation: Promise<T>, timeoutMs = SOURCE_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<T>((_, reject) => {
+        timer = setTimeout(() => reject(new Error("Source request timed out")), timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 async function discoverSource(source: OpportunitySource): Promise<Opportunity[]> {
   if (source.fetch) {
-    const raw = await source.fetch();
+    const raw = await withTimeout(source.fetch());
     const normalized: Opportunity[] = [];
     for (const item of raw) {
       try {
@@ -36,7 +48,7 @@ async function discoverSource(source: OpportunitySource): Promise<Opportunity[]>
     }
     return normalized;
   }
-  if (source.discover) return [...await source.discover()];
+  if (source.discover) return [...await withTimeout(source.discover())];
   throw new Error(`Source ${source.name} has no fetch or discover implementation`);
 }
 
