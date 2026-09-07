@@ -1,11 +1,8 @@
 import type { SupabaseClientLike } from "./supabase-repository.js";
 
 type FetchLike = typeof fetch;
-
-interface RestResponse {
-  data: unknown[] | null;
-  error: { message: string } | null;
-}
+type QueryResult = { data: unknown[] | null; error: { message: string } | null };
+type QueryBuilder = ReturnType<SupabaseRestClient["from"]>["select"] extends (...args: never[]) => infer R ? R : never;
 
 function encode(value: string): string {
   return encodeURIComponent(value);
@@ -21,9 +18,10 @@ export class SupabaseRestClient implements SupabaseClientLike {
 
   from(table: string) {
     const state: { filters: Array<[string, string]> } = { filters: [] };
+    const base = `${this.baseUrl.replace(/\/$/, "")}/rest/v1/${encode(table)}`;
     const url = () => {
       const query = state.filters.map(([column, value]) => `${encode(column)}=eq.${encode(value)}`).join("&");
-      return `${this.baseUrl.replace(/\/$/, "")}/rest/v1/${encode(table)}${query ? `?${query}` : ""}`;
+      return `${base}${query ? `?${query}` : ""}`;
     };
     const headers = {
       apikey: this.anonKey,
@@ -31,10 +29,18 @@ export class SupabaseRestClient implements SupabaseClientLike {
       "content-type": "application/json",
     };
 
-    return {
+    const request = async (columns: string, order?: { column: string; ascending?: boolean }): Promise<QueryResult> => {
+      const separator = state.filters.length ? "&" : "?";
+      const orderQuery = order ? `&order=${encode(order.column)}.${order.ascending === false ? "desc" : "asc"}` : "";
+      const response = await this.fetchImpl(`${url()}${separator}select=${encode(columns)}${orderQuery}`, { headers });
+      if (!response.ok) return { data: null, error: { message: await response.text() } };
+      return { data: (await response.json()) as unknown[], error: null };
+    };
+
+    const tableApi = {
       upsert: async (values: Record<string, unknown> | Record<string, unknown>[], options?: { onConflict?: string }) => {
         const target = options?.onConflict ? `?on_conflict=${encode(options.onConflict)}` : "";
-        const response = await this.fetchImpl(`${this.baseUrl.replace(/\/$/, "")}/rest/v1/${encode(table)}${target}`, {
+        const response = await this.fetchImpl(`${base}${target}`, {
           method: "POST",
           headers: { ...headers, prefer: "resolution=merge-duplicates,return=minimal" },
           body: JSON.stringify(values),
@@ -47,25 +53,16 @@ export class SupabaseRestClient implements SupabaseClientLike {
             state.filters.push([column, value]);
             return builder;
           },
-          order: async (column: string, options?: { ascending?: boolean }): Promise<RestResponse> => {
-            const separator = state.filters.length ? "&" : "?";
-            const order = `${encode(column)}.${options?.ascending === false ? "desc" : "asc"}`;
-            const response = await this.fetchImpl(`${url()}${separator}select=${encode(columns)}&order=${order}`, { headers });
-            if (!response.ok) return { data: null, error: { message: await response.text() } };
-            return { data: (await response.json()) as unknown[], error: null };
-          },
-          then: (onfulfilled: (value: RestResponse) => unknown, onrejected?: (reason: unknown) => unknown) => {
-            const separator = state.filters.length ? "&" : "?";
-            return this.fetchImpl(`${url()}${separator}select=${encode(columns)}`, { headers })
-              .then(async (response) => response.ok
-                ? { data: (await response.json()) as unknown[], error: null }
-                : { data: null, error: { message: await response.text() } })
-              .then(onfulfilled, onrejected);
-          },
+          order: (column: string, options?: { ascending?: boolean }) => request(columns, { column, ...options }),
+          then: <TResult1 = QueryResult, TResult2 = never>(
+            onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
+            onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+          ): PromiseLike<TResult1 | TResult2> => request(columns).then(onfulfilled ?? undefined, onrejected ?? undefined),
         };
         return builder;
       },
     };
+    return tableApi;
   }
 }
 
