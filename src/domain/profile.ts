@@ -14,4 +14,5 @@ export const defaultCandidateProfile: CandidateProfile = {
   ],
   preferredWorkModes: ["remote"],
   minimumHourlyUsd: 10,
+  minimumFixedUsd: 3,
 };

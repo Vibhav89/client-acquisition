@@ -3,6 +3,7 @@ import { runClientRadar } from "../src/application/client-radar.js";
 import { defaultCandidateProfile } from "../src/domain/profile.js";
 import { InMemoryPersistence } from "../src/domain/persistence.js";
 import type { Opportunity } from "../src/domain/opportunity.js";
+import type { RawOpportunity } from "../src/domain/normalizer.js";
 
 const job: Opportunity = {
   id: "good-job",
@@ -10,7 +11,7 @@ const job: Opportunity = {
   sourceUrl: "https://example.com/good-job",
   title: "Remote React TypeScript AI developer",
   description: "Build an AI dashboard with React and TypeScript.",
-  skills: ["React", "TypeScript", "AI"],
+  skills: ["TypeScript", "JavaScript", "React", "Next.js", "Node.js", "Supabase", "PostgreSQL", "AI", "LLM", "OpenAI", "API integration", "GitHub"],
   workMode: "remote",
   budget: { currency: "USD", min: 25, max: 40, unit: "hour" },
   status: "new",
@@ -25,12 +26,38 @@ const scam: Opportunity = {
   description: "Pay a registration fee before receiving the project.",
 };
 
+const rawJob: RawOpportunity = {
+  id: job.id,
+  source: job.source,
+  url: job.sourceUrl,
+  title: job.title,
+  description: job.description,
+  skills: job.skills,
+  workMode: job.workMode,
+  currency: "USD",
+  min: 25,
+  max: 40,
+  unit: "hour",
+};
+
+const rawScam: RawOpportunity = {
+  ...rawJob,
+  id: scam.id,
+  url: scam.sourceUrl,
+  title: scam.title,
+  description: scam.description,
+};
+
+const fixtureSource = {
+  name: "fixture",
+  fetch: async (): Promise<RawOpportunity[]> => [rawJob, rawScam],
+};
+
 describe("runClientRadar", () => {
   it("persists discovered work and creates approval requests without sending anything", async () => {
     const persistence = new InMemoryPersistence();
-    const source = { name: "fixture", discover: async () => [job, scam] };
 
-    const run = await runClientRadar([source], defaultCandidateProfile, persistence, "2026-09-07T12:00:00Z");
+    const run = await runClientRadar([fixtureSource], defaultCandidateProfile, persistence, "2026-09-07T12:00:00Z");
 
     expect(run.dashboard.summary.discovered).toBe(2);
     expect(run.dashboard.summary.skipped).toBe(1);

@@ -8,21 +8,13 @@ const profile: CandidateProfile = {
     { skill: "TypeScript", evidence: "Production TypeScript applications", strength: 1 },
     { skill: "React", evidence: "Production React work", strength: 1 },
   ],
-  preferredWorkModes: ["remote"],
-  minimumHourlyUsd: 10,
+  preferredWorkModes: ["remote"], minimumHourlyUsd: 10, minimumFixedUsd: 3,
 };
 
 const baseOpportunity: Opportunity = {
-  id: "job-1",
-  source: "test",
-  sourceUrl: "https://example.com/job-1",
-  title: "React TypeScript AI developer",
-  description: "Build a remote AI dashboard with Supabase.",
-  skills: ["React", "TypeScript", "AI", "Supabase"],
-  workMode: "remote",
-  budget: { currency: "USD", min: 20, max: 35, unit: "hour" },
-  status: "new",
-  discoveredAt: "2026-09-07T00:00:00Z",
+  id: "job-1", source: "test", sourceUrl: "https://example.com/job-1", title: "React TypeScript AI developer",
+  description: "Build a remote AI dashboard with Supabase.", skills: ["React", "TypeScript", "AI", "Supabase"], workMode: "remote",
+  budget: { currency: "USD", min: 20, max: 35, unit: "hour" }, status: "new", discoveredAt: "2026-09-07T00:00:00Z",
 };
 
 describe("analyzeOpportunity", () => {
@@ -33,11 +25,14 @@ describe("analyzeOpportunity", () => {
     expect(result.risk.level).toBe("low");
   });
 
+  it("qualifies a small fixed-price job above the starter threshold", () => {
+    const result = analyzeOpportunity({ ...baseOpportunity, budget: { currency: "USD", min: 3, max: 5, unit: "fixed" } }, profile);
+    expect(result.match.budgetScore).toBe(20);
+    expect(result.match.fitReasons).toContain("Fixed-price work meets the configured starter threshold.");
+  });
+
   it("blocks opportunities containing payment/deposit scam signals", () => {
-    const result = analyzeOpportunity({
-      ...baseOpportunity,
-      description: "Pay a registration fee and deposit before starting.",
-    }, profile);
+    const result = analyzeOpportunity({ ...baseOpportunity, description: "Pay a registration fee and deposit before starting." }, profile);
     expect(result.risk.level).toBe("high");
     expect(result.recommendation).toBe("skip");
   });
