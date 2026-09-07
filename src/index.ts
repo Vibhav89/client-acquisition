@@ -1,3 +1,6 @@
+export * from "./application/approval-service.js";
+export * from "./application/client-radar.js";
+export * from "./application/dashboard.js";
 export * from "./application/radar.js";
 export * from "./domain/analyze.js";
 export * from "./domain/approval.js";
