@@ -1,82 +1,92 @@
-import { useEffect, useMemo, useState } from "react";
 import { createRoot } from "react-dom/client";
+import { useEffect, useMemo, useState } from "react";
 import "./styles.css";
 
-type Risk = "low" | "medium" | "high";
-type Recommendation = "apply" | "review" | "skip";
-type Filter = "all" | "low" | "qualified";
-
 type Opportunity = {
-  id: string; title: string; source: string; sourceUrl: string; description: string;
-  skills: string[]; workMode: string; budget?: { currency: string; min?: number; max?: number; unit: string };
-  analysis?: { match: { score: number; matchedSkills: string[]; fitReasons: string[] }; risk: { level: Risk } ; recommendation: Recommendation };
+  id: string;
+  source: string;
+  sourceUrl: string;
+  title: string;
+  description: string;
+  skills: string[];
+  workMode: string;
+  location: string;
+  budget?: { currency: string; unit: string; min?: number; max?: number };
+  analysis?: {
+    match: { score: number; matchedSkills: string[]; fitReasons: string[] };
+    risk: { level: "low" | "medium" | "high" };
+    recommendation: "apply" | "review" | "skip";
+  };
 };
 
 type Approval = { id: string; opportunityId: string; proposal: string; state: string };
-type RadarResponse = { dashboard: { summary: { discovered: number; qualified: number; review: number; skipped: number; pendingProposalReview: number } }; opportunities: Opportunity[]; approvals: Approval[] };
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(path, { ...init, headers: { "content-type": "application/json", ...(init?.headers ?? {}) } });
-  const data: unknown = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(typeof data === "object" && data && "error" in data ? String((data as { error: unknown }).error) : `Request failed (${response.status})`);
-  return data as T;
-}
+type ApiData = {
+  dashboard: { summary: { discovered: number; qualified: number; review: number; skipped: number } };
+  opportunities: Opportunity[];
+  approvals: Approval[];
+};
 
 function budgetLabel(budget?: Opportunity["budget"]): string {
-  if (!budget) return "Budget not specified";
+  if (!budget) return "Budget not listed";
   const currency = budget.currency.toUpperCase();
-  if (budget.min !== undefined && budget.max !== undefined) return `${currency} ${budget.min}-${budget.max}/${budget.unit}`;
-  if (budget.max !== undefined) return `Up to ${currency} ${budget.max}/${budget.unit}`;
-  if (budget.min !== undefined) return `From ${currency} ${budget.min}/${budget.unit}`;
-  return `${currency} (${budget.unit})`;
+  const min = budget.min ?? budget.max;
+  const max = budget.max ?? budget.min;
+  if (budget.unit === "hourly") return `${currency} ${min ?? "?"}${max && max !== min ? `–${max}` : ""}/hr`;
+  return `${currency} ${min ?? "?"}${max && max !== min ? `–${max}` : ""} fixed`;
 }
 
-function App() {
-  const [data, setData] = useState<RadarResponse | null>(null);
-  const [filter, setFilter] = useState<Filter>("all");
+export function App() {
+  const [data, setData] = useState<ApiData | null>(null);
+  const [filter, setFilter] = useState<"all" | "low" | "qualified">("all");
   const [selected, setSelected] = useState<Opportunity | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
   const [busyApproval, setBusyApproval] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const refresh = async () => {
-    setRefreshing(true); setError(null);
-    try { setData(await api<RadarResponse>("/api/radar")); }
-    catch (err) { setError(err instanceof Error ? err.message : "Unable to load radar"); }
-    finally { setRefreshing(false); }
-  };
+  async function refresh(): Promise<void> {
+    setRefreshing(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/radar", { cache: "no-store" });
+      if (!response.ok) throw new Error(`Radar request failed (${response.status})`);
+      setData(await response.json() as ApiData);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to load radar");
+    } finally {
+      setRefreshing(false);
+    }
+  }
 
   useEffect(() => { void refresh(); }, []);
 
-  const jobs = useMemo(() => (data?.opportunities ?? []).filter((job) => {
-    const risk = job.analysis?.risk.level ?? "medium";
-    const score = job.analysis?.match.score ?? 0;
-    if (filter === "low") return risk === "low";
-    if (filter === "qualified") return job.analysis?.recommendation === "apply" || score >= 75;
-    return true;
-  }), [data, filter]);
-
-  const approvalFor = (job: Opportunity) => data?.approvals.find((item) => item.opportunityId === job.id && item.state === "pending");
-
-  const decide = async (job: Opportunity, action: "approve" | "reject") => {
-    const approval = approvalFor(job);
-    if (!approval) return;
-    setBusyApproval(true); setError(null);
-    try {
-      await api<Approval>(`/api/approvals/${encodeURIComponent(approval.id)}/${action}`, { method: "POST" });
-      setSelected(null); await refresh();
-    } catch (err) { setError(err instanceof Error ? err.message : "Approval action failed"); }
-    finally { setBusyApproval(false); }
-  };
+  const jobs = useMemo(() => {
+    const all = data?.opportunities ?? [];
+    if (filter === "low") return all.filter((job) => job.analysis?.risk.level === "low");
+    if (filter === "qualified") return all.filter((job) => job.analysis?.recommendation === "apply");
+    return all;
+  }, [data, filter]);
 
   const summary = data?.dashboard.summary;
+  const approvalFor = (job: Opportunity) => data?.approvals.find((approval) => approval.opportunityId === job.id && approval.state === "pending");
 
-  return <div className="app">
-    <aside className="sidebar">
-      <div className="brand"><span className="brand-mark">CR</span><div><strong>Client Radar</strong><small>Acquisition Engine</small></div></div>
-      <nav><a className="active">Radar</a><a>Approvals <b>{summary?.pendingProposalReview ?? 0}</b></a><a>Applications</a><a>Clients</a><a>Settings</a></nav>
-      <div className="safe"><span>●</span><div><strong>Approval-first</strong><small>No automatic submissions</small></div></div>
-    </aside>
+  async function decide(job: Opportunity, action: "approve" | "reject"): Promise<void> {
+    const approval = approvalFor(job);
+    if (!approval) return;
+    setBusyApproval(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/approvals/${encodeURIComponent(approval.id)}/${action}`, { method: "POST" });
+      if (!response.ok) throw new Error(`Approval request failed (${response.status})`);
+      setSelected(null);
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to save approval");
+    } finally {
+      setBusyApproval(false);
+    }
+  }
+
+  return <div className="app-shell">
     <main>
       <header><div><p className="eyebrow">TODAY'S OPPORTUNITIES</p><h1>Client Radar</h1><p className="muted">Live public opportunities, ranked by fit and safety.</p></div><button className="refresh" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? "Refreshing…" : "↻ Refresh radar"}</button></header>
       {error && <div className="error">{error}</div>}
@@ -88,7 +98,7 @@ function App() {
       </section>
       <p className="demo-note">Live radar API connected · discovery and proposal review run server-side. Approval does not submit an application or send a message.</p>
     </main>
-    {selected && <div className="modal-backdrop" onClick={() => setSelected(null)}><section className="modal" onClick={(event) => event.stopPropagation()}><div className="modal-head"><div><span className="source">{selected.source}</span><h2>{selected.title}</h2></div><button className="close" onClick={() => setSelected(null)}>×</button></div><div className="proposal"><p className="eyebrow">PROPOSAL / ANALYSIS</p><p>{approvalFor(selected)?.proposal ?? selected.analysis?.fitReasons.join(" ") ?? selected.description}</p></div><div className="modal-actions"><button onClick={() => setSelected(null)}>Keep pending</button>{approvalFor(selected) && <><button onClick={() => void decide(selected, "reject")} disabled={busyApproval}>Reject</button><button className="approve" onClick={() => void decide(selected, "approve")} disabled={busyApproval}>{busyApproval ? "Saving…" : "Approve for next step"}</button></>}</div><small className="modal-safe">Approval only. This action does not submit an application or send a message.</small></section></div>}
+    {selected && <div className="modal-backdrop" onClick={() => setSelected(null)}><section className="modal" onClick={(event) => event.stopPropagation()}><div className="modal-head"><div><span className="source">{selected.source}</span><h2>{selected.title}</h2></div><button className="close" onClick={() => setSelected(null)}>×</button></div><div className="proposal"><p className="eyebrow">PROPOSAL / ANALYSIS</p><p>{approvalFor(selected)?.proposal ?? selected.analysis?.match.fitReasons.join(" ") ?? selected.description}</p></div><div className="modal-actions"><button onClick={() => setSelected(null)}>Keep pending</button>{approvalFor(selected) && <><button onClick={() => void decide(selected, "reject")} disabled={busyApproval}>Reject</button><button className="approve" onClick={() => void decide(selected, "approve")} disabled={busyApproval}>{busyApproval ? "Saving…" : "Approve for next step"}</button></>}</div><small className="modal-safe">Approval only. This action does not submit an application or send a message.</small></section></div>}
   </div>;
 }
 
