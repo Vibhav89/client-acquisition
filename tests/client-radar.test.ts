@@ -34,10 +34,10 @@ const rawJob: RawOpportunity = {
   description: job.description,
   skills: job.skills,
   workMode: job.workMode,
-  currency: job.budget?.currency,
-  min: job.budget?.min,
-  max: job.budget?.max,
-  unit: job.budget?.unit,
+  currency: "USD",
+  min: 25,
+  max: 40,
+  unit: "hour",
 };
 
 const rawScam: RawOpportunity = {
@@ -48,7 +48,6 @@ const rawScam: RawOpportunity = {
   description: scam.description,
 };
 
-// exactOptionalPropertyTypes: do not pass undefined-valued optional fields.
 const fixtureSource = {
   name: "fixture",
   fetch: async (): Promise<RawOpportunity[]> => [rawJob, rawScam],
