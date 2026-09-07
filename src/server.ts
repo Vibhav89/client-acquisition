@@ -7,12 +7,17 @@ import { runClientRadar } from "./application/client-radar.js";
 import { defaultCandidateProfile } from "./domain/profile.js";
 import { InMemoryPersistence } from "./domain/persistence.js";
 import { createDefaultPublicSources } from "./integrations/public-sources.js";
+import { SupabasePersistence } from "./integrations/supabase-repository.js";
+import { getSupabaseAuthUser, SupabaseRestClient } from "./integrations/supabase-rest-client.js";
+import type { PersistencePort } from "./domain/persistence.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const root = fileURLToPath(new URL("../dist", import.meta.url));
-const persistence = new InMemoryPersistence();
+const developmentPersistence = new InMemoryPersistence();
 const sources = createDefaultPublicSources();
-const approvalService = new DefaultApprovalService(persistence);
+const supabaseUrl = process.env.SUPABASE_URL?.trim();
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim();
+const supabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
 const mime: Record<string, string> = {
   ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8",
@@ -24,12 +29,34 @@ function sendJson(res: ServerResponse, status: number, value: unknown): void {
   res.end(JSON.stringify(value));
 }
 
+function bearerToken(req: IncomingMessage): string | undefined {
+  const value = req.headers.authorization;
+  if (!value?.startsWith("Bearer ")) return undefined;
+  const token = value.slice("Bearer ".length).trim();
+  return token || undefined;
+}
+
+async function requestPersistence(req: IncomingMessage): Promise<PersistencePort | undefined> {
+  if (!supabaseConfigured) return developmentPersistence;
+  const token = bearerToken(req);
+  if (!token) return undefined;
+  const user = await getSupabaseAuthUser(supabaseUrl!, supabaseAnonKey!, token);
+  if (!user) return undefined;
+  return new SupabasePersistence(new SupabaseRestClient(supabaseUrl!, supabaseAnonKey!, token), user.id);
+}
+
 export async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
   try {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     if (url.pathname.startsWith("/api/")) {
       if (url.pathname === "/api/health" && req.method === "GET") {
-        sendJson(res, 200, { ok: true, service: "client-acquisition" });
+        sendJson(res, 200, { ok: true, service: "client-acquisition", authentication: supabaseConfigured ? "supabase" : "development" });
+        return;
+      }
+
+      const persistence = await requestPersistence(req);
+      if (!persistence) {
+        sendJson(res, 401, { error: "Authentication required" });
         return;
       }
 
@@ -43,6 +70,7 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse): 
       if (approvalMatch && req.method === "POST") {
         const id = decodeURIComponent(approvalMatch[1] ?? "");
         const action = approvalMatch[2];
+        const approvalService = new DefaultApprovalService(persistence);
         const request = action === "approve" ? await approvalService.approve(id) : await approvalService.reject(id);
         sendJson(res, 200, request);
         return;
