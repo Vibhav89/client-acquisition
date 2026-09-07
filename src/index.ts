@@ -7,7 +7,7 @@ export * from "./domain/approval.js";
 export * from "./domain/match.js";
 export * from "./domain/normalizer.js";
 export * from "./domain/opportunity.js";
-export * from "./domain/pipeline.js";
+// Legacy pipeline kept for direct imports; the canonical radar API is domain/radar.ts.
 export * from "./domain/proposal.js";
 export * from "./domain/radar.js";
 export * from "./domain/risk.js";
