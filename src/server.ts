@@ -72,6 +72,10 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse): 
         sendJson(res, 200, { ok: true, service: "client-acquisition", authentication: supabaseConfigured ? "supabase" : "development" });
         return;
       }
+      if (url.pathname === "/api/config" && req.method === "GET") {
+        sendJson(res, 200, { authentication: supabaseConfigured ? "supabase" : "development", ...(supabaseConfigured ? { supabaseUrl, supabaseAnonKey } : {}) });
+        return;
+      }
 
       const context = await requestContext(req);
       if (!context) {
