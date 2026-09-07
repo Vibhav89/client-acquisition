@@ -21,7 +21,9 @@ describe("HTTP API", () => {
     const base = await startServer();
     const response = await fetch(`${base}/api/health`);
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toEqual({ ok: true, service: "client-acquisition" });
+    const value = await response.json();
+    expect(value).toMatchObject({ ok: true, service: "client-acquisition" });
+    expect(["development", "supabase"]).toContain(value.authentication);
   });
 
   it("rejects unknown API routes and non-GET static methods", async () => {
