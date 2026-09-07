@@ -1,10 +1,12 @@
 import { transitionApproval, type ApprovalRequest } from "../domain/approval.js";
+import { draftProposal } from "../domain/proposal.js";
+import type { CandidateProfile } from "../domain/opportunity.js";
 import type { RadarResult } from "../domain/radar.js";
 import { sanitizeProposalInput } from "../domain/security.js";
 import type { PersistencePort } from "../domain/persistence.js";
 
 export interface ApprovalService {
-  createForRadar(result: RadarResult, now?: string): ApprovalRequest[];
+  createForRadar(result: RadarResult, profile: CandidateProfile, now?: string): ApprovalRequest[];
   approve(id: string, now?: string): ApprovalRequest;
   reject(id: string, now?: string): ApprovalRequest;
 }
@@ -12,7 +14,7 @@ export interface ApprovalService {
 export class DefaultApprovalService implements ApprovalService {
   constructor(private readonly persistence: PersistencePort) {}
 
-  createForRadar(result: RadarResult, now = new Date().toISOString()): ApprovalRequest[] {
+  createForRadar(result: RadarResult, profile: CandidateProfile, now = new Date().toISOString()): ApprovalRequest[] {
     const created: ApprovalRequest[] = [];
     for (const ranked of result.ranked) {
       if (ranked.analysis.recommendation !== "apply") continue;
@@ -25,12 +27,11 @@ export class DefaultApprovalService implements ApprovalService {
         continue;
       }
 
+      const proposal = draftProposal(ranked.opportunity, profile);
       const request: ApprovalRequest = {
         id: `approval:${ranked.opportunity.id}`,
         opportunityId: ranked.opportunity.id,
-        proposal: sanitizeProposalInput(
-          `Application: ${ranked.opportunity.title}\n\n${buildApprovalBody(ranked.opportunity.id, ranked.analysis.match.matchedSkills)}`,
-        ),
+        proposal: sanitizeProposalInput(`${proposal.subject}\n\n${proposal.body}`),
         state: "draft",
         createdAt: now,
       };
@@ -60,12 +61,4 @@ export class DefaultApprovalService implements ApprovalService {
     if (!request) throw new Error(`Pending approval not found: ${id}`);
     return request;
   }
-}
-
-function buildApprovalBody(opportunityId: string, matchedSkills: readonly string[]): string {
-  return [
-    `Opportunity: ${opportunityId}`,
-    `Matched skills: ${matchedSkills.join(", ") || "None"}`,
-    "Human review required before any external submission.",
-  ].join("\n");
 }
