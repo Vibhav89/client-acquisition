@@ -24,18 +24,15 @@ function fakeClient() {
           const builder = {
             eq(column: string, value: string) {
               const filtered = rows.filter((row) => row.__table === table && String(row[column]) === value);
-              return {
-                ...builder,
-                then: (resolve: (value: { data: unknown[]; error: null }) => unknown) => Promise.resolve(resolve({ data: filtered, error: null })),
-              } as never;
+              return Promise.resolve({ data: filtered, error: null });
             },
             order() {
               const filtered = rows.filter((row) => row.__table === table);
               return Promise.resolve({ data: filtered, error: null });
             },
-            then(resolve: (value: { data: unknown[]; error: null }) => unknown) {
+            then(onfulfilled, onrejected) {
               const filtered = rows.filter((row) => row.__table === table);
-              return Promise.resolve(resolve({ data: filtered, error: null }));
+              return Promise.resolve({ data: filtered, error: null }).then(onfulfilled, onrejected);
             },
           };
           return builder;
