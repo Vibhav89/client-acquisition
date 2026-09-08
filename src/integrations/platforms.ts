@@ -25,17 +25,20 @@ function inferSkills(text: string): string[] {
   return known.filter((skill) => lower.includes(skill.toLowerCase()));
 }
 
-function genericExtract(platform: PlatformName, page: BrowserPage): Opportunity[] {
-  const lines = page.text.split(/\n+/).map((line) => line.trim()).filter(Boolean);
-  const titleCandidates = lines.filter((line) => line.length >= 8 && line.length <= 180 && opportunityWords.test(line));
-  const uniqueTitles = [...new Set(titleCandidates)].slice(0, 25);
-  return uniqueTitles.map((title, index) => ({
-    id: `${platform}:${Buffer.from(`${page.url}#${index}`).toString("base64url")}`,
+function extractLinkedOpportunities(platform: PlatformName, page: BrowserPage): Opportunity[] {
+  const links = (page.links ?? [])
+    .filter((link) => opportunityWords.test(link.text))
+    .filter((link) => hostMatches(link.href, platformHosts[platform as Exclude<PlatformName, "generic">]))
+    .filter((link) => link.text.length >= 8 && link.text.length <= 180);
+  const unique = [...new Map(links.map((link) => [link.href.split("#")[0], link])).values()].slice(0, 50);
+
+  return unique.map((link) => ({
+    id: `${platform}:${link.href.split("#")[0]}`,
     source: platform,
-    sourceUrl: page.url,
-    title,
+    sourceUrl: link.href,
+    title: link.text,
     description: page.text.slice(0, 4_000),
-    skills: inferSkills(`${title}\n${page.text}`),
+    skills: inferSkills(`${link.text}\n${page.text}`),
     workMode: "remote",
     status: "new",
     discoveredAt: new Date().toISOString(),
@@ -48,7 +51,7 @@ function connector(platform: Exclude<PlatformName, "generic">, displayName: stri
     displayName,
     canHandle: (page) => hostMatches(page.url, platformHosts[platform]),
     async extractOpportunities(page) {
-      return genericExtract(platform, page);
+      return extractLinkedOpportunities(platform, page);
     },
   };
 }
