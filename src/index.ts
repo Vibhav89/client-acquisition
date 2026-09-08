@@ -8,6 +8,7 @@ export * from "./application/client-service.js";
 export * from "./application/learning-service.js";
 export * from "./application/command-center.js";
 export * from "./application/alert-service.js";
+export * from "./application/automation-orchestrator.js";
 export * from "./domain/analyze.js";
 export * from "./domain/approval.js";
 export * from "./domain/action-queue.js";
