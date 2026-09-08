@@ -4,9 +4,12 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { DefaultApprovalService } from "./application/approval-service.js";
 import { runClientRadar } from "./application/client-radar.js";
+import { runPlatformRadar } from "./application/platform-radar.js";
 import { defaultCandidateProfile } from "./domain/profile.js";
 import { InMemoryPersistence } from "./domain/persistence.js";
 import { createDefaultPublicSources } from "./integrations/public-sources.js";
+import { PlaywrightBrowserSession } from "./integrations/browser-session.js";
+import { createDefaultPlatformConfigs } from "./integrations/platform-config.js";
 import { SupabasePersistence } from "./integrations/supabase-repository.js";
 import { SupabaseProfilePersistence } from "./integrations/supabase-profile-repository.js";
 import { getSupabaseAuthUser, SupabaseRestClient } from "./integrations/supabase-rest-client.js";
@@ -18,6 +21,9 @@ const port = Number(process.env.PORT ?? 8787);
 const root = fileURLToPath(new URL("../dist", import.meta.url));
 const developmentPersistence = new InMemoryPersistence();
 const sources = createDefaultPublicSources();
+const browserEnabled = process.env.CLIENT_RADAR_BROWSER_ENABLED === "true";
+const browserSession = new PlaywrightBrowserSession();
+const platformConfigs = createDefaultPlatformConfigs();
 const supabaseUrl = process.env.SUPABASE_URL?.trim();
 const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim();
 const hasSupabaseUrl = Boolean(supabaseUrl);
@@ -76,11 +82,11 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse): 
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
     if (url.pathname.startsWith("/api/")) {
       if (url.pathname === "/api/health" && req.method === "GET") {
-        sendJson(res, 200, { ok: true, service: "client-acquisition", authentication: supabaseConfigured ? "supabase" : "development" });
+        sendJson(res, 200, { ok: true, service: "client-acquisition", authentication: supabaseConfigured ? "supabase" : "development", browserRadar: browserEnabled });
         return;
       }
       if (url.pathname === "/api/config" && req.method === "GET") {
-        sendJson(res, 200, { authentication: supabaseConfigured ? "supabase" : "development", ...(supabaseConfigured ? { supabaseUrl, supabaseAnonKey } : {}) });
+        sendJson(res, 200, { authentication: supabaseConfigured ? "supabase" : "development", browserRadar: browserEnabled, platforms: platformConfigs.map(({ platform, displayName }) => ({ platform, displayName })) });
         return;
       }
 
@@ -93,6 +99,17 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse): 
       if (url.pathname === "/api/radar" && req.method === "GET") {
         const profile = await loadProfile(context.profilePersistence);
         const run = await runClientRadar(sources, profile, context.persistence);
+        sendJson(res, 200, run);
+        return;
+      }
+
+      if (url.pathname === "/api/platform-radar" && req.method === "GET") {
+        if (!browserEnabled) {
+          sendJson(res, 409, { error: "Browser radar is disabled. Set CLIENT_RADAR_BROWSER_ENABLED=true for local use." });
+          return;
+        }
+        const profile = await loadProfile(context.profilePersistence);
+        const run = await runPlatformRadar(platformConfigs, browserSession, profile, context.persistence);
         sendJson(res, 200, run);
         return;
       }
