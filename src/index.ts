@@ -15,6 +15,7 @@ export * from "./application/negotiation-service.js";
 export * from "./application/profile-service.js";
 export * from "./application/profile-driven-agent.js";
 export * from "./application/deal-service.js";
+export * from "./application/workflow-service.js";
 export * from "./domain/analyze.js";
 export * from "./domain/approval.js";
 export * from "./domain/action-queue.js";
