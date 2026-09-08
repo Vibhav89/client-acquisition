@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, feature/live-api]
+    branches: [main, feature/live-api, feature/negotiation-guardrails]
   pull_request:
-    branches: [main, feature/live-api]
+    branches: [main, feature/live-api, feature/negotiation-guardrails]
 
 jobs:
   quality:
@@ -14,6 +14,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
       - run: npm install
       - run: npm run typecheck
       - run: npm run build
