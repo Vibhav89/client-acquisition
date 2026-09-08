@@ -36,6 +36,10 @@ export class PlaywrightBrowserSession implements BrowserSessionPort {
     await page.goto(config.startUrl, { waitUntil: "domcontentloaded", timeout: 30_000 });
     await page.waitForTimeout(750);
     const text = await page.locator("body").innerText().catch(() => "");
+    const links = await page.locator("a[href]").evaluateAll((anchors) => anchors
+      .map((anchor) => ({ text: (anchor.textContent ?? "").trim(), href: (anchor as HTMLAnchorElement).href }))
+      .filter((link) => link.text && link.href)
+      .slice(0, 500));
     const loggedIn = isLikelyLoggedIn(page.url(), text);
 
     return {
@@ -48,6 +52,7 @@ export class PlaywrightBrowserSession implements BrowserSessionPort {
         url: page.url(),
         title: await page.title().catch(() => undefined),
         text: text.slice(0, 80_000),
+        links,
       },
     };
   }
