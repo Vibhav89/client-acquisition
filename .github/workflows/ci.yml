@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, feature/live-api, feature/negotiation-guardrails]
+    branches: [main, feature/live-api, feature/negotiation-guardrails, feature/completion-client-workflow]
   pull_request:
-    branches: [main, feature/live-api, feature/negotiation-guardrails]
+    branches: [main, feature/live-api, feature/negotiation-guardrails, feature/completion-client-workflow]
 
 jobs:
   quality:
