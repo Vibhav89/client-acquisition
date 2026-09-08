@@ -3,10 +3,10 @@ import { defaultCandidateProfile } from "../src/domain/profile.js";
 import { runRadar } from "../src/domain/radar.js";
 import type { Opportunity } from "../src/domain/opportunity.js";
 
-const opportunity = (id: string, description: string, skills: string[] = ["React", "TypeScript", "AI"]): Opportunity => ({
+const opportunity = (id: string, description: string, skills: string[] = ["React", "TypeScript", "AI"], url = `https://example.com/${id}`): Opportunity => ({
   id,
   source: "fixture",
-  sourceUrl: `https://example.com/${id}`,
+  sourceUrl: url,
   title: "React TypeScript AI developer",
   description,
   skills,
@@ -31,5 +31,14 @@ describe("client radar", () => {
     expect(result.skipped).toBe(2);
     expect(result.ranked[0]?.opportunity.id).toBe("good");
     expect(result.ranked.find((item) => item.opportunity.id === "scam")?.analysis.risk.level).toBe("high");
+  });
+
+  it("deduplicates different source record IDs that resolve to the same canonical URL", () => {
+    const first = opportunity("one", "original", ["React"], "https://example.com/job/1?utm_source=a");
+    const second = opportunity("two", "updated", ["React"], "https://example.com/job/1?utm_source=b");
+    const result = runRadar([first, second], defaultCandidateProfile);
+    expect(result.analyzed).toBe(1);
+    expect(result.ranked[0]?.opportunity.id).toBe("two");
+    expect(result.ranked[0]?.opportunity.description).toBe("updated");
   });
 });

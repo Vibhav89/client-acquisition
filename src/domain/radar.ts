@@ -1,4 +1,5 @@
 import { analyzeOpportunity } from "./analyze.js";
+import { deduplicateOpportunities } from "./dedup.js";
 import type { CandidateProfile, Opportunity, OpportunityAnalysis } from "./opportunity.js";
 import { rankOpportunities, type RankedOpportunity } from "./rank.js";
 
@@ -14,11 +15,9 @@ export function runRadar(
   opportunities: readonly Opportunity[],
   profile: CandidateProfile,
 ): RadarResult {
-  const unique = new Map<string, Opportunity>();
-  for (const opportunity of opportunities) unique.set(opportunity.id, opportunity);
-
+  const unique = deduplicateOpportunities(opportunities);
   const analyzed: { opportunity: Opportunity; analysis: OpportunityAnalysis }[] = [];
-  for (const opportunity of unique.values()) {
+  for (const opportunity of unique) {
     analyzed.push({ opportunity, analysis: analyzeOpportunity(opportunity, profile) });
   }
 
