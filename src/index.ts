@@ -11,6 +11,7 @@ export * from "./application/alert-service.js";
 export * from "./application/automation-orchestrator.js";
 export * from "./application/history-service.js";
 export * from "./application/follow-up-service.js";
+export * from "./application/negotiation-service.js";
 export * from "./domain/analyze.js";
 export * from "./domain/approval.js";
 export * from "./domain/action-queue.js";
