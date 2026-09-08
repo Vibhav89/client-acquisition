@@ -1,4 +1,6 @@
 import type { ClientEvent, ClientRecord, ClientStage, ConversationMessage } from "../domain/client.js";
+import type { EventHistoryPort } from "../domain/event-history.js";
+import { createHistoryEvent } from "../domain/event-history.js";
 
 export interface ClientCrmPort {
   upsertClient(client: ClientRecord): void | Promise<void>;
@@ -25,27 +27,24 @@ export class InMemoryClientCrm implements ClientCrmPort {
 }
 
 const allowedTransitions: Record<ClientStage, readonly ClientStage[]> = {
-  discovered: ["qualified", "lost"],
-  qualified: ["approached", "lost"],
-  approached: ["replied", "lost"],
-  replied: ["conversation", "lost"],
-  conversation: ["negotiation", "interested", "lost"],
-  negotiation: ["interested", "lost"],
-  interested: ["final_approval", "lost"],
-  final_approval: ["won", "lost"],
-  won: ["work", "lost"],
-  lost: [],
-  work: ["payment"],
-  payment: ["review"],
-  review: [],
+  discovered: ["qualified", "lost"], qualified: ["approached", "lost"], approached: ["replied", "lost"],
+  replied: ["conversation", "lost"], conversation: ["negotiation", "interested", "lost"], negotiation: ["interested", "lost"],
+  interested: ["final_approval", "lost"], final_approval: ["won", "lost"], won: ["work", "lost"], lost: [], work: ["payment"], payment: ["review"], review: [],
 };
 
-export async function transitionClientStage(crm: ClientCrmPort, clientId: string, toStage: ClientStage, summary: string, now = new Date().toISOString()): Promise<ClientRecord> {
+export async function transitionClientStage(
+  crm: ClientCrmPort, clientId: string, toStage: ClientStage, summary: string,
+  now = new Date().toISOString(), history?: EventHistoryPort,
+): Promise<ClientRecord> {
   const current = await crm.getClient(clientId);
   if (!current) throw new Error(`Client not found: ${clientId}`);
   if (!allowedTransitions[current.stage].includes(toStage)) throw new Error(`Invalid client transition: ${current.stage} -> ${toStage}`);
   const next: ClientRecord = { ...current, stage: toStage, updatedAt: now };
   await crm.upsertClient(next);
   await crm.addEvent({ id: `event:${clientId}:${now}:${toStage}`, clientId, type: "stage_changed", fromStage: current.stage, toStage, summary, createdAt: now });
+  await history?.append(createHistoryEvent({
+    type: "client_stage_changed", timestamp: now, entityType: "client", entityId: clientId,
+    source: current.source, summary, metadata: { fromStage: current.stage, toStage },
+  }));
   return next;
 }
