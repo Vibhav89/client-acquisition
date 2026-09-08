@@ -24,6 +24,10 @@ export interface PersistencePort {
   listApplications?(): ApplicationRecord[] | Promise<ApplicationRecord[]>;
   saveEarnings?(earnings: EarningsRecord): void | Promise<void>;
   listEarnings?(): EarningsRecord[] | Promise<EarningsRecord[]>;
+  saveHistoryEvent?(event: any): void | Promise<void>;
+  listHistoryEvents?(filter?: any): any[] | Promise<any[]>;
+  saveLearningEvent?(event: any): void | Promise<void>;
+  listLearningEvents?(): any[] | Promise<any[]>;
 }
 
 export class InMemoryPersistence implements PersistencePort {
@@ -34,6 +38,8 @@ export class InMemoryPersistence implements PersistencePort {
   private readonly deals = new Map<string, DealApproval>();
   private readonly applications = new Map<string, ApplicationRecord>();
   private readonly earnings = new Map<string, EarningsRecord>();
+  private readonly historyEvents = new Map<string, any>();
+  private readonly learningEvents = new Map<string, any>();
 
   saveOpportunity(opportunity: Opportunity): void { this.opportunities.set(opportunity.id, opportunity); }
   saveApproval(request: ApprovalRequest): void {
@@ -61,4 +67,18 @@ export class InMemoryPersistence implements PersistencePort {
 
   saveEarnings(record: EarningsRecord): void { if (!Number.isFinite(record.amount) || record.amount <= 0) throw new Error("Earnings amount must be greater than zero"); this.earnings.set(record.id, structuredClone(record)); }
   listEarnings(): EarningsRecord[] { return [...this.earnings.values()].sort((a, b) => b.receivedAt.localeCompare(a.receivedAt)).map((e) => structuredClone(e)); }
+
+  saveHistoryEvent(event: any): void { this.historyEvents.set(event.id, structuredClone(event)); }
+  listHistoryEvents(filter: any = {}): any[] {
+    return [...this.historyEvents.values()]
+      .filter((e) => !filter.type || e.type === filter.type)
+      .filter((e) => !filter.entityType || e.entityType === filter.entityType)
+      .filter((e) => !filter.entityId || e.entityId === filter.entityId)
+      .filter((e) => !filter.source || e.source === filter.source)
+      .sort((a, b) => (b.timestamp ?? b.createdAt ?? "").localeCompare(a.timestamp ?? a.createdAt ?? ""))
+      .map((e) => structuredClone(e));
+  }
+
+  saveLearningEvent(event: any): void { this.learningEvents.set(event.id, structuredClone(event)); }
+  listLearningEvents(): any[] { return [...this.learningEvents.values()].map((e) => structuredClone(e)); }
 }

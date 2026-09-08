@@ -24,6 +24,8 @@ import { buildCommandCenterSnapshot } from "./application/command-center.js";
 import { transitionApplication } from "./domain/application-tracking.js";
 import { transitionDealApproval } from "./domain/deal.js";
 import { prepareConversationDecision } from "./domain/conversation.js";
+import { summarizeLearning } from "./domain/learning.js";
+import { createHistoryEvent } from "./domain/event-history.js";
 
 const port = Number(process.env.PORT ?? 8787); const root = fileURLToPath(new URL("../dist", import.meta.url)); const developmentPersistence = new InMemoryPersistence(); const developmentProfilePersistence = new InMemoryProfilePersistence(); const sources = createDefaultPublicSources(); const browserEnabled = process.env.CLIENT_RADAR_BROWSER_ENABLED === "true"; const browserSession = new PlaywrightBrowserSession(); const platformConfigs = createDefaultPlatformConfigs(); const supabaseUrl = process.env.SUPABASE_URL?.trim(); const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim(); const hasSupabaseUrl = Boolean(supabaseUrl); const hasSupabaseKey = Boolean(supabaseAnonKey); const supabaseConfigured = hasSupabaseUrl && hasSupabaseKey; const partialSupabaseConfig = hasSupabaseUrl !== hasSupabaseKey; const productionMode = process.env.NODE_ENV === "production"; const MAX_PROFILE_BODY_BYTES = 1024 * 1024;
 if (partialSupabaseConfig || (productionMode && !supabaseConfigured)) throw new Error("Production requires both SUPABASE_URL and SUPABASE_ANON_KEY; partial configuration is not allowed.");
@@ -37,6 +39,7 @@ async function loadProfile(profilePersistence: ProfilePersistencePort): Promise<
 async function loadCandidateProfile(profilePersistence: ProfilePersistencePort): Promise<CandidateProfile> { const profile = await loadProfile(profilePersistence); return "negotiation" in profile ? toCandidateProfile(profile) : profile; }
 
 export async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> { try { const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`); if (url.pathname.startsWith("/api/")) { if (url.pathname === "/api/health" && req.method === "GET") { sendJson(res, 200, { ok: true, service: "client-acquisition", authentication: supabaseConfigured ? "supabase" : "development", browserRadar: browserEnabled }); return; } if (url.pathname === "/api/config" && req.method === "GET") { sendJson(res, 200, { authentication: supabaseConfigured ? "supabase" : "development", browserRadar: browserEnabled, platforms: platformConfigs.map(({ platform, displayName }) => ({ platform, displayName })) }); return; } const context = await requestContext(req); if (!context) { sendJson(res, 401, { error: "Authentication required" }); return; }
+
 if (url.pathname === "/api/profile" && req.method === "GET") { const profile = await context.profilePersistence.getProfile(); sendJson(res, 200, { configured: Boolean(profile), profile: profile ?? null }); return; }
 if (url.pathname === "/api/profile" && req.method === "POST") { try { const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES); if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Profile payload must be a JSON object"); const profile = await saveMasterProfile(context.profilePersistence, body as PersonalAgentProfile); sendJson(res, 200, { configured: true, profile }); } catch (error) { sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid profile payload" }); } return; }
 if (url.pathname === "/api/radar" && req.method === "GET") { const profile = await loadProfile(context.profilePersistence); const run = await runClientRadar(sources, profile, context.persistence); sendJson(res, 200, run); return; }
@@ -81,9 +84,24 @@ if (url.pathname === "/api/command-center" && req.method === "GET") {
   return;
 }
 
+if (url.pathname === "/api/approvals" && req.method === "GET") {
+  const approvals = await context.persistence.listPendingApprovals();
+  sendJson(res, 200, approvals);
+  return;
+}
+
 if (url.pathname === "/api/clients" && req.method === "GET") {
   const clients = context.persistence.listClients ? await context.persistence.listClients() : [];
   sendJson(res, 200, clients);
+  return;
+}
+
+const clientDetailMatch = url.pathname.match(/^\/api\/clients\/([^/]+)$/);
+if (clientDetailMatch && req.method === "GET") {
+  const clientId = decodeURIComponent(clientDetailMatch[1] ?? "");
+  const client = context.persistence.getClient ? await context.persistence.getClient(clientId) : undefined;
+  if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
+  sendJson(res, 200, client);
   return;
 }
 
@@ -135,6 +153,25 @@ if (url.pathname === "/api/conversations" && req.method === "POST") {
     sendJson(res, 200, { message, decision, requiresUserApproval: true });
   } catch (error) {
     sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid message payload" });
+  }
+  return;
+}
+
+if (url.pathname === "/api/conversations/assess" && req.method === "POST") {
+  try {
+    const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
+    if (!body || typeof body !== "object" || !body.clientId || !body.messageText) {
+      throw new Error("Assessment payload must include clientId and messageText");
+    }
+    const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
+    if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
+    const profile = await loadProfile(context.profilePersistence);
+    const opportunity = client.opportunityIds.length > 0 ? await context.persistence.getOpportunity(client.opportunityIds[0]!) : undefined;
+    const dummyMessage = { id: `assess:${body.clientId}`, clientId: body.clientId, direction: "inbound" as const, body: body.messageText, timestamp: new Date().toISOString() };
+    const decision = "negotiation" in profile && opportunity ? prepareConversationDecision(dummyMessage, client, opportunity, profile) : undefined;
+    sendJson(res, 200, { clientId: body.clientId, decision, requiresUserApproval: true });
+  } catch (error) {
+    sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid conversation assessment payload" });
   }
   return;
 }
@@ -257,6 +294,76 @@ if (url.pathname === "/api/earnings" && req.method === "POST") {
     sendJson(res, 200, record);
   } catch (error) {
     sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid earnings payload" });
+  }
+  return;
+}
+
+if (url.pathname === "/api/history" && req.method === "GET") {
+  const type = url.searchParams.get("type") ?? undefined;
+  const entityType = url.searchParams.get("entityType") ?? undefined;
+  const entityId = url.searchParams.get("entityId") ?? undefined;
+  const events = context.persistence.listHistoryEvents ? await context.persistence.listHistoryEvents({ type, entityType, entityId }) : [];
+  sendJson(res, 200, events);
+  return;
+}
+
+if (url.pathname === "/api/history" && req.method === "POST") {
+  try {
+    const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
+    if (!body || typeof body !== "object" || !body.type || !body.entityType || !body.entityId || !body.summary) {
+      throw new Error("History event must include type, entityType, entityId, and summary");
+    }
+    const now = new Date().toISOString();
+    const event = createHistoryEvent({
+      id: body.id,
+      type: body.type,
+      timestamp: body.timestamp ?? now,
+      entityType: body.entityType,
+      entityId: body.entityId,
+      source: body.source,
+      summary: body.summary,
+      metadata: body.metadata,
+      requiresUserApproval: body.requiresUserApproval ?? false,
+    });
+    if (context.persistence.saveHistoryEvent) await context.persistence.saveHistoryEvent(event);
+    sendJson(res, 200, event);
+  } catch (error) {
+    sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid history payload" });
+  }
+  return;
+}
+
+if (url.pathname === "/api/learning" && req.method === "GET") {
+  const source = url.searchParams.get("source") ?? undefined;
+  const events = context.persistence.listLearningEvents ? await context.persistence.listLearningEvents() : [];
+  const summary = summarizeLearning(events, source);
+  sendJson(res, 200, { summary, events });
+  return;
+}
+
+if (url.pathname === "/api/learning" && req.method === "POST") {
+  try {
+    const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
+    if (!body || typeof body !== "object" || !body.outcome || !["won", "lost", "rejected", "ignored"].includes(body.outcome)) {
+      throw new Error("Learning event payload must include valid outcome (won, lost, rejected, ignored)");
+    }
+    const now = new Date().toISOString();
+    const event = {
+      id: body.id ?? `learning:${now}:${Math.random().toString(36).slice(2, 7)}`,
+      clientId: body.clientId,
+      opportunityId: body.opportunityId,
+      source: body.source,
+      outcome: body.outcome,
+      stage: body.stage,
+      reason: body.reason,
+      matchScore: body.matchScore,
+      riskScore: body.riskScore,
+      createdAt: body.createdAt ?? now,
+    };
+    if (context.persistence.saveLearningEvent) await context.persistence.saveLearningEvent(event);
+    sendJson(res, 200, event);
+  } catch (error) {
+    sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid learning payload" });
   }
   return;
 }

@@ -145,6 +145,49 @@ export class SupabasePersistence implements PersistencePort {
     return (data ?? []).map((row) => this.earningsFromRow(row as Record<string, unknown>));
   }
 
+  async saveHistoryEvent(event: any): Promise<void> {
+    const { error } = await this.client.from("event_history").upsert({
+      id: event.id, user_id: this.userId, type: event.type, timestamp: event.timestamp ?? event.createdAt ?? new Date().toISOString(),
+      entity_type: event.entityType, entity_id: event.entityId, source: event.source ?? null, summary: event.summary,
+      metadata: event.metadata ?? null, requires_user_approval: event.requiresUserApproval ?? false,
+    }, { onConflict: "user_id,id" });
+    if (error) throw new Error(`Failed to save history event: ${error.message}`);
+  }
+
+  async listHistoryEvents(filter: any = {}): Promise<any[]> {
+    let query = this.client.from("event_history").select("*").eq("user_id", this.userId);
+    if (filter.type) query = query.eq("type", filter.type);
+    if (filter.entityType) query = query.eq("entity_type", filter.entityType);
+    if (filter.entityId) query = query.eq("entity_id", filter.entityId);
+    if (filter.source) query = query.eq("source", filter.source);
+    const { data, error } = await query.order("timestamp", { ascending: false });
+    if (error) throw new Error(`Failed to list history events: ${error.message}`);
+    return (data ?? []).map((row) => this.historyEventFromRow(row as Record<string, unknown>));
+  }
+
+  async saveLearningEvent(event: any): Promise<void> {
+    const { error } = await this.client.from("learning_events").upsert({
+      id: event.id, user_id: this.userId, client_id: event.clientId ?? null, opportunity_id: event.opportunityId ?? null,
+      source: event.source ?? null, outcome: event.outcome, stage: event.stage ?? null, reason: event.reason ?? null,
+      match_score: event.matchScore ?? null, risk_score: event.riskScore ?? null, created_at: event.createdAt ?? new Date().toISOString(),
+    }, { onConflict: "user_id,id" });
+    if (error) throw new Error(`Failed to save learning event: ${error.message}`);
+  }
+
+  async listLearningEvents(): Promise<any[]> {
+    const { data, error } = await this.client.from("learning_events").select("*").eq("user_id", this.userId).order("created_at", { ascending: false });
+    if (error) throw new Error(`Failed to list learning events: ${error.message}`);
+    return (data ?? []).map((row) => this.learningEventFromRow(row as Record<string, unknown>));
+  }
+
+  private historyEventFromRow(row: Record<string, unknown>): any {
+    return { id: String(row.id), type: String(row.type), timestamp: String(row.timestamp), entityType: String(row.entity_type), entityId: String(row.entity_id), ...(typeof row.source === "string" ? { source: row.source } : {}), summary: String(row.summary), ...(row.metadata ? { metadata: row.metadata } : {}), requiresUserApproval: Boolean(row.requires_user_approval) };
+  }
+
+  private learningEventFromRow(row: Record<string, unknown>): any {
+    return { id: String(row.id), ...(typeof row.client_id === "string" ? { clientId: row.client_id } : {}), ...(typeof row.opportunity_id === "string" ? { opportunityId: row.opportunity_id } : {}), ...(typeof row.source === "string" ? { source: row.source } : {}), outcome: String(row.outcome), ...(typeof row.stage === "string" ? { stage: row.stage } : {}), ...(typeof row.reason === "string" ? { reason: row.reason } : {}), ...(typeof row.match_score === "number" ? { matchScore: row.match_score } : {}), ...(typeof row.risk_score === "number" ? { riskScore: row.risk_score } : {}), createdAt: String(row.created_at) };
+  }
+
   private clientFromRow(row: Record<string, unknown>): any {
     return {
       id: String(row.id), opportunityIds: Array.isArray(row.opportunity_ids) ? row.opportunity_ids.map(String) : [], source: String(row.source), sourceUrl: String(row.source_url),

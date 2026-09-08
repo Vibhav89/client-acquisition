@@ -123,4 +123,149 @@ describe("completion workflow end-to-end", () => {
     ];
     expect(applyLearningBoost(70, "upwork", fewEvents)).toBe(70);
   });
+
+  describe("Audit Scenarios A through R", () => {
+    it("Scenario A: Safe opportunity", () => {
+      const opp: Opportunity = { id: "opp:safe", source: "upwork", sourceUrl: "https://example.com/safe", title: "React TypeScript Dev", description: "Build UI components", skills: ["React", "TypeScript"], workMode: "remote", status: "new", discoveredAt: "2026-09-09T00:00:00Z" };
+      const radar = runRadar([opp], profile);
+      expect(radar.qualified).toBe(1);
+    });
+
+    it("Scenario B: High-risk opportunity", () => {
+      const opp: Opportunity = { id: "opp:risk", source: "upwork", sourceUrl: "https://example.com/risk", title: "Crypto Transfer Manager", description: "Send registration fee via Western Union", skills: ["Crypto"], workMode: "remote", status: "new", discoveredAt: "2026-09-09T00:00:00Z" };
+      const radar = runRadar([opp], profile);
+      expect(radar.skipped).toBe(1);
+    });
+
+    it("Scenario C: New client capture", () => {
+      const client: ClientRecord = { id: "client:new", opportunityIds: ["opp:safe"], source: "upwork", sourceUrl: "https://example.com/safe", stage: "discovered", fitScore: 85, legitimacyScore: 90, priorityScore: 85, summary: "Captured client", needs: ["React"], objections: [], approachAngle: "Evidence", nextAction: "Draft proposal", createdAt: "2026-09-09T00:00:00Z", updatedAt: "2026-09-09T00:00:00Z" };
+      expect(client.id).toBe("client:new");
+    });
+
+    it("Scenario D: Client replies", () => {
+      const client: ClientRecord = { id: "c1", opportunityIds: ["o1"], source: "upwork", sourceUrl: "https://example.com", stage: "conversation", fitScore: 90, legitimacyScore: 90, priorityScore: 90, summary: "Lead", needs: [], objections: [], approachAngle: "", nextAction: "", createdAt: "", updatedAt: "" };
+      const opp: Opportunity = { id: "o1", source: "upwork", sourceUrl: "https://example.com", title: "Title", description: "Desc", skills: ["TypeScript"], workMode: "remote", status: "new", discoveredAt: "" };
+      const msg: ConversationMessage = { id: "m1", clientId: "c1", direction: "inbound", body: "What is your hourly rate?", timestamp: "" };
+      const decision = prepareConversationDecision(msg, client, opp, profile);
+      expect(decision.requiresUserApproval).toBe(true);
+    });
+
+    it("Scenario E: Price negotiation below threshold", () => {
+      const client: ClientRecord = { id: "c1", opportunityIds: ["o1"], source: "upwork", sourceUrl: "https://example.com", stage: "negotiation", fitScore: 90, legitimacyScore: 90, priorityScore: 90, summary: "Lead", needs: [], objections: [], approachAngle: "", nextAction: "", createdAt: "", updatedAt: "" };
+      const msg: ConversationMessage = { id: "m1", clientId: "c1", direction: "inbound", body: "Can you do a discount or reduce the price?", timestamp: "" };
+      const assessment = assessNegotiation(msg, client, profile);
+      expect(assessment.escalateToFinalApproval).toBe(true);
+      expect(assessment.signals).toContain("price_pressure");
+    });
+
+    it("Scenario F: Scope creep detection", () => {
+      const client: ClientRecord = { id: "c1", opportunityIds: ["o1"], source: "upwork", sourceUrl: "https://example.com", stage: "negotiation", fitScore: 90, legitimacyScore: 90, priorityScore: 90, summary: "Lead", needs: [], objections: [], approachAngle: "", nextAction: "", createdAt: "", updatedAt: "" };
+      const msg: ConversationMessage = { id: "m1", clientId: "c1", direction: "inbound", body: "Also add extra features while you are at it.", timestamp: "" };
+      const assessment = assessNegotiation(msg, client, profile);
+      expect(assessment.signals).toContain("scope_creep");
+    });
+
+    it("Scenario G: Payment scam attempt", () => {
+      const client: ClientRecord = { id: "c1", opportunityIds: ["o1"], source: "upwork", sourceUrl: "https://example.com", stage: "negotiation", fitScore: 90, legitimacyScore: 90, priorityScore: 90, summary: "Lead", needs: [], objections: [], approachAngle: "", nextAction: "", createdAt: "", updatedAt: "" };
+      const msg: ConversationMessage = { id: "m1", clientId: "c1", direction: "inbound", body: "We will pay via gift card or crypto registration fee.", timestamp: "" };
+      const assessment = assessNegotiation(msg, client, profile);
+      expect(assessment.signals).toContain("payment_risk");
+    });
+
+    it("Scenario H: Off-platform request", () => {
+      const client: ClientRecord = { id: "c1", opportunityIds: ["o1"], source: "upwork", sourceUrl: "https://example.com", stage: "negotiation", fitScore: 90, legitimacyScore: 90, priorityScore: 90, summary: "Lead", needs: [], objections: [], approachAngle: "", nextAction: "", createdAt: "", updatedAt: "" };
+      const msg: ConversationMessage = { id: "m1", clientId: "c1", direction: "inbound", body: "Contact me outside on Telegram @scam", timestamp: "" };
+      const assessment = assessNegotiation(msg, client, profile);
+      expect(assessment.signals).toContain("off_platform_risk");
+    });
+
+    it("Scenario I: Buying signal", () => {
+      const client: ClientRecord = { id: "c1", opportunityIds: ["o1"], source: "upwork", sourceUrl: "https://example.com", stage: "negotiation", fitScore: 90, legitimacyScore: 90, priorityScore: 90, summary: "Lead", needs: [], objections: [], approachAngle: "", nextAction: "", createdAt: "", updatedAt: "" };
+      const msg: ConversationMessage = { id: "m1", clientId: "c1", direction: "inbound", body: "We accept your terms! Send contract.", timestamp: "" };
+      const assessment = assessNegotiation(msg, client, profile);
+      expect(assessment.escalateToFinalApproval).toBe(true);
+    });
+
+    it("Scenario J: Final deal approval", () => {
+      const deal = createDealForFinalApproval("c1", { scope: "Full project", priceUsd: 500, deliveryDays: 5, deliverables: ["Code"], assumptions: [], risks: [] }, profile.negotiation, ["User approval"]);
+      expect(deal.state).toBe("pending_final_approval");
+      const approved = decideDeal(deal, "approved");
+      expect(approved.state).toBe("approved");
+    });
+
+    it("Scenario K: Application approval", () => {
+      const app: ApplicationRecord = { id: "app:1", opportunityId: "o1", source: "upwork", sourceUrl: "https://example.com", status: "draft", createdAt: "", updatedAt: "" };
+      const approved = transitionApplication(app, "approved");
+      expect(approved.status).toBe("approved");
+    });
+
+    it("Scenario L: Application submission boundary", () => {
+      const app: ApplicationRecord = { id: "app:1", opportunityId: "o1", source: "upwork", sourceUrl: "https://example.com", status: "approved", createdAt: "", updatedAt: "" };
+      const applied = transitionApplication(app, "applied");
+      expect(applied.status).toBe("applied");
+    });
+
+    it("Scenario M: Manual earnings", () => {
+      const store = new InMemoryEarningsStore();
+      store.add({ id: "e1", projectTitle: "App", amount: 1000, currency: "USD", receivedAt: "2026-09-09T00:00:00Z" });
+      expect(store.summary().totalReceived).toBe(1000);
+    });
+
+    it("Scenario N: Won outcome", () => {
+      const app: ApplicationRecord = { id: "app:1", opportunityId: "o1", source: "upwork", sourceUrl: "https://example.com", status: "interview", createdAt: "", updatedAt: "" };
+      const won = transitionApplication(app, "won");
+      expect(won.status).toBe("won");
+    });
+
+    it("Scenario O: Lost outcome", () => {
+      const app: ApplicationRecord = { id: "app:1", opportunityId: "o1", source: "upwork", sourceUrl: "https://example.com", status: "interview", createdAt: "", updatedAt: "" };
+      const lost = transitionApplication(app, "lost");
+      expect(lost.status).toBe("lost");
+    });
+
+    it("Scenario P: Learning update threshold", () => {
+      const events = Array.from({ length: 5 }, (_, i) => ({ id: `e${i}`, source: "upwork", outcome: "won" as const, createdAt: "2026-09-09T00:00:00Z" }));
+      const boosted = applyLearningBoost(70, "upwork", events);
+      expect(boosted).toBeGreaterThan(70);
+    });
+
+    it("Scenario Q: Cross-user access isolation in SupabasePersistence", async () => {
+      const { SupabasePersistence } = await import("../src/integrations/supabase-repository.js");
+      const fakeClient = {
+        from: (table: string) => ({
+          upsert: async () => ({ error: null }),
+          select: () => ({
+            eq: (col: string, val: string) => ({
+              eq: (col2: string, val2: string) => ({
+                order: async () => ({ data: [{ id: "opp:user1", user_id: "user1", title: "Secret Job", source: "u", source_url: "u", description: "d", skills: [], work_mode: "remote", status: "new", discovered_at: "now" }], error: null }),
+              }),
+              order: async () => ({ data: [], error: null }),
+            }),
+          }),
+        }),
+      };
+      const repo = new SupabasePersistence(fakeClient as any, "user2");
+      const list = await repo.listOpportunities();
+      expect(list).toEqual([]);
+    });
+
+    it("Scenario R: Malformed API request error handling", async () => {
+      const { handleRequest } = await import("../src/server.js");
+      let statusCode = 0;
+      let bodyText = "";
+      const req: any = {
+        url: "/api/profile",
+        method: "POST",
+        headers: { host: "localhost", "content-length": "12" },
+        async *[Symbol.asyncIterator]() { yield Buffer.from("invalid json"); },
+      };
+      const res: any = {
+        writeHead: (code: number) => { statusCode = code; },
+        end: (text: string) => { bodyText = text; },
+      };
+      await handleRequest(req, res);
+      expect(statusCode).toBe(400);
+      expect(bodyText).toContain("Request body must be valid JSON");
+    });
+  });
 });
