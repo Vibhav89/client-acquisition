@@ -5,8 +5,10 @@ import { fileURLToPath } from "node:url";
 import { DefaultApprovalService } from "./application/approval-service.js";
 import { runClientRadar } from "./application/client-radar.js";
 import { runPlatformRadar } from "./application/platform-radar.js";
+import { saveMasterProfile } from "./application/profile-service.js";
 import { defaultCandidateProfile } from "./domain/profile.js";
 import { InMemoryPersistence } from "./domain/persistence.js";
+import { InMemoryProfilePersistence } from "./domain/profile-persistence.js";
 import { createDefaultPublicSources } from "./integrations/public-sources.js";
 import { PlaywrightBrowserSession } from "./integrations/browser-session.js";
 import { createDefaultPlatformConfigs } from "./integrations/platform-config.js";
@@ -22,6 +24,7 @@ import { toCandidateProfile } from "./domain/master-profile.js";
 const port = Number(process.env.PORT ?? 8787);
 const root = fileURLToPath(new URL("../dist", import.meta.url));
 const developmentPersistence = new InMemoryPersistence();
+const developmentProfilePersistence = new InMemoryProfilePersistence();
 const sources = createDefaultPublicSources();
 const browserEnabled = process.env.CLIENT_RADAR_BROWSER_ENABLED === "true";
 const browserSession = new PlaywrightBrowserSession();
@@ -33,6 +36,7 @@ const hasSupabaseKey = Boolean(supabaseAnonKey);
 const supabaseConfigured = hasSupabaseUrl && hasSupabaseKey;
 const partialSupabaseConfig = hasSupabaseUrl !== hasSupabaseKey;
 const productionMode = process.env.NODE_ENV === "production";
+const MAX_PROFILE_BODY_BYTES = 1024 * 1024;
 if (partialSupabaseConfig || (productionMode && !supabaseConfigured)) {
   throw new Error("Production requires both SUPABASE_URL and SUPABASE_ANON_KEY; partial configuration is not allowed.");
 }
@@ -54,13 +58,29 @@ function bearerToken(req: IncomingMessage): string | undefined {
   return token || undefined;
 }
 
+async function readJsonBody(req: IncomingMessage, maxBytes: number): Promise<unknown> {
+  const declaredLength = Number(req.headers["content-length"] ?? 0);
+  if (Number.isFinite(declaredLength) && declaredLength > maxBytes) throw new Error("Request body too large");
+  const chunks: Buffer[] = [];
+  let size = 0;
+  for await (const chunk of req) {
+    const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    size += buffer.length;
+    if (size > maxBytes) throw new Error("Request body too large");
+    chunks.push(buffer);
+  }
+  const text = Buffer.concat(chunks).toString("utf8");
+  if (!text.trim()) throw new Error("Request body is required");
+  try { return JSON.parse(text); } catch { throw new Error("Request body must be valid JSON"); }
+}
+
 interface RequestContext {
   persistence: PersistencePort;
   profilePersistence: ProfilePersistencePort;
 }
 
 async function requestContext(req: IncomingMessage): Promise<RequestContext | undefined> {
-  if (!supabaseConfigured) return { persistence: developmentPersistence, profilePersistence: { getProfile: () => undefined, saveProfile: () => undefined } };
+  if (!supabaseConfigured) return { persistence: developmentPersistence, profilePersistence: developmentProfilePersistence };
   const token = bearerToken(req);
   if (!token) return undefined;
   const user = await getSupabaseAuthUser(supabaseUrl!, supabaseAnonKey!, token);
@@ -100,6 +120,18 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse): 
       if (url.pathname === "/api/profile" && req.method === "GET") {
         const profile = await context.profilePersistence.getProfile();
         sendJson(res, 200, { configured: Boolean(profile), profile: profile ?? null });
+        return;
+      }
+
+      if (url.pathname === "/api/profile" && req.method === "POST") {
+        try {
+          const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES);
+          if (!body || typeof body !== "object" || Array.isArray(body)) throw new Error("Profile payload must be a JSON object");
+          const profile = await saveMasterProfile(context.profilePersistence, body as PersonalAgentProfile);
+          sendJson(res, 200, { configured: true, profile });
+        } catch (error) {
+          sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid profile payload" });
+        }
         return;
       }
 
