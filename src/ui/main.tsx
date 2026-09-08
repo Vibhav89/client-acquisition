@@ -3,163 +3,50 @@ import { useEffect, useMemo, useState } from "react";
 import { authHeaders, clearAccessToken, getAccessToken, getAuthConfig, signInWithPassword, type AuthConfig } from "./auth.js";
 import "./styles.css";
 
-type Opportunity = {
-  id: string; source: string; sourceUrl: string; title: string; description: string; skills: string[];
-  workMode: string; location: string; budget?: { currency: string; unit: string; min?: number; max?: number };
-  analysis?: { match: { score: number; matchedSkills: string[]; fitReasons: string[] }; risk: { level: "low" | "medium" | "high" }; recommendation: "apply" | "review" | "skip" };
-};
+type Opportunity = { id: string; source: string; sourceUrl: string; title: string; description: string; skills: string[]; workMode: string; location: string; budget?: { currency: string; unit: string; min?: number; max?: number }; analysis?: { match: { score: number; matchedSkills: string[]; fitReasons: string[] }; risk: { level: "low" | "medium" | "high" }; recommendation: "apply" | "review" | "skip" } };
 type Approval = { id: string; opportunityId: string; proposal: string; state: string };
 type Session = { platform: string; loggedIn: boolean; checkedAt: string };
 type ApiData = { dashboard: { summary: { discovered: number; qualified: number; review: number; skipped: number } }; opportunities: Opportunity[]; approvals: Approval[]; sessions?: Session[] };
+type Profile = { id: string; displayName: string; headline: string; bio: string; location?: string; timezone?: string; industries?: string[]; languages?: string[]; availabilityHoursPerWeek?: number; skills: string[]; evidence: { skill: string; evidence: string }[]; preferredWorkModes: string[]; portfolio: { title: string; url?: string; description: string; skills: string[] }[]; services: { name: string; description: string; minimumUsd?: number; deliveryDays?: number }[]; platformAccounts: { platform: string; profileUrl?: string; username?: string; enabled: boolean }[]; communicationStyle: "concise" | "professional" | "friendly" | "technical"; negotiation: { minimumHourlyUsd?: number; minimumFixedUsd?: number; preferredHourlyUsd?: number; preferredFixedUsd?: number; maxDiscountPercent: number; requireScopeConfirmation: boolean; requireFinalApproval: boolean }; redFlags: string[]; lastUpdatedAt: string };
 
-function budgetLabel(budget?: Opportunity["budget"]): string {
-  if (!budget) return "Budget not listed";
-  const currency = budget.currency.toUpperCase();
-  const min = budget.min ?? budget.max;
-  const max = budget.max ?? budget.min;
-  if (budget.unit === "hourly") return `${currency} ${min ?? "?"}${max && max !== min ? `–${max}` : ""}/hr`;
-  return `${currency} ${min ?? "?"}${max && max !== min ? `–${max}` : ""} fixed`;
-}
+const emptyProfile = (): Profile => ({ id: crypto.randomUUID(), displayName: "", headline: "", bio: "", skills: [], evidence: [], preferredWorkModes: ["remote"], portfolio: [], services: [], platformAccounts: [], communicationStyle: "professional", negotiation: { minimumHourlyUsd: 10, minimumFixedUsd: 3, preferredHourlyUsd: 20, preferredFixedUsd: 100, maxDiscountPercent: 10, requireScopeConfirmation: true, requireFinalApproval: true }, redFlags: [], lastUpdatedAt: new Date().toISOString() });
+function budgetLabel(budget?: Opportunity["budget"]): string { if (!budget) return "Budget not listed"; const currency = budget.currency.toUpperCase(); const min = budget.min ?? budget.max; const max = budget.max ?? budget.min; if (budget.unit === "hourly") return `${currency} ${min ?? "?"}${max && max !== min ? `–${max}` : ""}/hr`; return `${currency} ${min ?? "?"}${max && max !== min ? `–${max}` : ""} fixed`; }
+function Stat({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) { return <div className="stat"><span>{label}</span><strong className={accent ? "accent" : ""}>{value}</strong></div>; }
 
-function Stat({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
-  return <div className="stat"><span>{label}</span><strong className={accent ? "accent" : ""}>{value}</strong></div>;
+function ProfilePanel({ profile, onSaved }: { profile: Profile | null; onSaved: (profile: Profile) => void }) {
+  const [form, setForm] = useState<Profile>(profile ?? emptyProfile());
+  const [saving, setSaving] = useState(false); const [message, setMessage] = useState<string | null>(null);
+  useEffect(() => { if (profile) setForm(profile); }, [profile]);
+  const set = (key: keyof Profile, value: unknown) => setForm((current) => ({ ...current, [key]: value }));
+  const setNegotiation = (key: keyof Profile["negotiation"], value: unknown) => setForm((current) => ({ ...current, negotiation: { ...current.negotiation, [key]: value } }));
+  async function save(): Promise<void> { setSaving(true); setMessage(null); try { const payload = { ...form, skills: form.skills, evidence: form.skills.map((skill) => form.evidence.find((item) => item.skill === skill) ?? { skill, evidence: "" }), lastUpdatedAt: new Date().toISOString() }; const response = await fetch("/api/profile", { method: "POST", headers: { ...authHeaders(), "content-type": "application/json" }, body: JSON.stringify(payload) }); if (!response.ok) { const body = await response.json().catch(() => ({})) as { error?: string }; throw new Error(body.error ?? `Profile save failed (${response.status})`); } const body = await response.json() as { profile: Profile }; onSaved(body.profile); setMessage("Profile saved. Radar matching and proposals now use it."); } catch (cause) { setMessage(cause instanceof Error ? cause.message : "Unable to save profile"); } finally { setSaving(false); } }
+  return <section className="panel profile-panel"><div className="panel-head"><div><p className="eyebrow">MASTER PROFILE</p><h2>Teach Client Radar about you</h2><p className="muted">Save your real skills, positioning and price floor once. Never add passwords or API keys here.</p></div><button className="approve" onClick={() => void save()} disabled={saving || !form.displayName.trim() || !form.headline.trim() || !form.bio.trim()}>{saving ? "Saving…" : "Save profile"}</button></div>
+    <div className="profile-grid"><label>Name<input value={form.displayName} onChange={(e) => set("displayName", e.target.value)} /></label><label>Headline<input value={form.headline} onChange={(e) => set("headline", e.target.value)} placeholder="TypeScript / React / AI developer" /></label><label>Location<input value={form.location ?? ""} onChange={(e) => set("location", e.target.value)} /></label><label>Timezone<input value={form.timezone ?? ""} onChange={(e) => set("timezone", e.target.value)} placeholder="Asia/Kolkata" /></label><label className="wide">Bio<textarea value={form.bio} onChange={(e) => set("bio", e.target.value)} rows={3} /></label><label className="wide">Skills<input value={form.skills.join(", ")} onChange={(e) => set("skills", e.target.value.split(",").map((v) => v.trim()).filter(Boolean))} placeholder="TypeScript, React, Supabase, AI, API integration" /></label><label>Minimum hourly USD<input type="number" min="0" value={form.negotiation.minimumHourlyUsd ?? ""} onChange={(e) => setNegotiation("minimumHourlyUsd", Number(e.target.value))} /></label><label>Preferred hourly USD<input type="number" min="0" value={form.negotiation.preferredHourlyUsd ?? ""} onChange={(e) => setNegotiation("preferredHourlyUsd", Number(e.target.value))} /></label><label>Minimum fixed USD<input type="number" min="0" value={form.negotiation.minimumFixedUsd ?? ""} onChange={(e) => setNegotiation("minimumFixedUsd", Number(e.target.value))} /></label><label>Preferred fixed USD<input type="number" min="0" value={form.negotiation.preferredFixedUsd ?? ""} onChange={(e) => setNegotiation("preferredFixedUsd", Number(e.target.value))} /></label><label>Max discount %<input type="number" min="0" max="100" value={form.negotiation.maxDiscountPercent} onChange={(e) => setNegotiation("maxDiscountPercent", Number(e.target.value))} /></label><label>Communication<select value={form.communicationStyle} onChange={(e) => set("communicationStyle", e.target.value)}><option value="professional">Professional</option><option value="concise">Concise</option><option value="friendly">Friendly</option><option value="technical">Technical</option></select></label></div>
+    <div className="profile-options"><label><input type="checkbox" checked={form.negotiation.requireScopeConfirmation} onChange={(e) => setNegotiation("requireScopeConfirmation", e.target.checked)} /> Require scope confirmation</label><label><input type="checkbox" checked={form.negotiation.requireFinalApproval} onChange={(e) => setNegotiation("requireFinalApproval", e.target.checked)} /> Require final approval</label></div>{message && <div className={message.startsWith("Profile saved") ? "success" : "error"}>{message}</div>}
+  </section>;
 }
 
 export function App() {
-  const [config, setConfig] = useState<AuthConfig | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [data, setData] = useState<ApiData | null>(null);
-  const [filter, setFilter] = useState<"all" | "low" | "qualified">("all");
-  const [selected, setSelected] = useState<Opportunity | null>(null);
-  const [refreshing, setRefreshing] = useState(false);
-  const [scanningPlatforms, setScanningPlatforms] = useState(false);
-  const [busyApproval, setBusyApproval] = useState(false);
-  const [authBusy, setAuthBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    void getAuthConfig().then(setConfig).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load configuration"));
-  }, []);
-
-  async function refresh(): Promise<void> {
-    setRefreshing(true); setError(null);
-    try {
-      const response = await fetch("/api/radar", { cache: "no-store", headers: authHeaders() });
-      if (response.status === 401) { clearAccessToken(); throw new Error("Please sign in to load your radar."); }
-      if (!response.ok) throw new Error(`Radar request failed (${response.status})`);
-      setData(await response.json() as ApiData);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to load radar"); }
-    finally { setRefreshing(false); }
-  }
-
-  async function scanPlatforms(): Promise<void> {
-    setScanningPlatforms(true); setError(null);
-    try {
-      const response = await fetch("/api/platform-radar", { cache: "no-store", headers: authHeaders() });
-      if (response.status === 401) { clearAccessToken(); throw new Error("Please sign in to scan your platform sessions."); }
-      if (response.status === 409) throw new Error("Browser radar is disabled. Enable it with CLIENT_RADAR_BROWSER_ENABLED=true.");
-      if (!response.ok) throw new Error(`Platform radar failed (${response.status})`);
-      setData(await response.json() as ApiData);
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to scan platforms"); }
-    finally { setScanningPlatforms(false); }
-  }
-
-  useEffect(() => {
-    if (config?.authentication === "development" || getAccessToken()) void refresh();
-  }, [config]);
-
-  async function signIn(): Promise<void> {
-    if (!config) return;
-    setAuthBusy(true); setError(null);
-    try { await signInWithPassword(config, email.trim(), password); setPassword(""); await refresh(); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to sign in"); }
-    finally { setAuthBusy(false); }
-  }
-
-  function signOut(): void { clearAccessToken(); setData(null); setError(null); }
-
-  const jobs = useMemo(() => {
-    const all = data?.opportunities ?? [];
-    if (filter === "low") return all.filter((job) => job.analysis?.risk.level === "low");
-    if (filter === "qualified") return all.filter((job) => job.analysis?.recommendation === "apply");
-    return all;
-  }, [data, filter]);
-  const summary = data?.dashboard.summary;
-  const approvalFor = (job: Opportunity) => data?.approvals.find((approval) => approval.opportunityId === job.id && approval.state === "pending");
-  const connectedPlatforms = data?.sessions?.filter((session) => session.loggedIn).map((session) => session.platform) ?? [];
-
-  async function decide(job: Opportunity, action: "approve" | "reject"): Promise<void> {
-    const approval = approvalFor(job); if (!approval) return;
-    setBusyApproval(true); setError(null);
-    try {
-      const response = await fetch(`/api/approvals/${encodeURIComponent(approval.id)}/${action}`, { method: "POST", headers: authHeaders() });
-      if (response.status === 401) { signOut(); throw new Error("Your session expired. Please sign in again."); }
-      if (!response.ok) throw new Error(`Approval request failed (${response.status})`);
-      setSelected(null); await refresh();
-    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save approval"); }
-    finally { setBusyApproval(false); }
-  }
-
+  const [config, setConfig] = useState<AuthConfig | null>(null); const [profile, setProfile] = useState<Profile | null>(null); const [profileConfigured, setProfileConfigured] = useState(false); const [email, setEmail] = useState(""); const [password, setPassword] = useState(""); const [data, setData] = useState<ApiData | null>(null); const [filter, setFilter] = useState<"all" | "low" | "qualified">("all"); const [selected, setSelected] = useState<Opportunity | null>(null); const [refreshing, setRefreshing] = useState(false); const [scanningPlatforms, setScanningPlatforms] = useState(false); const [busyApproval, setBusyApproval] = useState(false); const [authBusy, setAuthBusy] = useState(false); const [error, setError] = useState<string | null>(null);
+  useEffect(() => { void getAuthConfig().then(setConfig).catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load configuration")); }, []);
+  async function loadProfile(): Promise<void> { const response = await fetch("/api/profile", { cache: "no-store", headers: authHeaders() }); if (response.status === 401) { clearAccessToken(); throw new Error("Please sign in to load your profile."); } if (!response.ok) throw new Error(`Profile request failed (${response.status})`); const body = await response.json() as { configured: boolean; profile: Profile | null }; setProfileConfigured(body.configured); setProfile(body.profile); }
+  async function refresh(): Promise<void> { setRefreshing(true); setError(null); try { const response = await fetch("/api/radar", { cache: "no-store", headers: authHeaders() }); if (response.status === 401) { clearAccessToken(); throw new Error("Please sign in to load your radar."); } if (!response.ok) throw new Error(`Radar request failed (${response.status})`); setData(await response.json() as ApiData); } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to load radar"); } finally { setRefreshing(false); } }
+  async function scanPlatforms(): Promise<void> { setScanningPlatforms(true); setError(null); try { const response = await fetch("/api/platform-radar", { cache: "no-store", headers: authHeaders() }); if (response.status === 401) { clearAccessToken(); throw new Error("Please sign in to scan your platform sessions."); } if (response.status === 409) throw new Error("Browser radar is disabled. Enable it with CLIENT_RADAR_BROWSER_ENABLED=true."); if (!response.ok) throw new Error(`Platform radar failed (${response.status})`); setData(await response.json() as ApiData); } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to scan platforms"); } finally { setScanningPlatforms(false); } }
+  useEffect(() => { if (config?.authentication === "development" || getAccessToken()) { void loadProfile().catch((cause) => setError(cause instanceof Error ? cause.message : "Unable to load profile")); void refresh(); } }, [config]);
+  async function signIn(): Promise<void> { if (!config) return; setAuthBusy(true); setError(null); try { await signInWithPassword(config, email.trim(), password); setPassword(""); await loadProfile(); await refresh(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to sign in"); } finally { setAuthBusy(false); } }
+  function signOut(): void { clearAccessToken(); setData(null); setProfile(null); setProfileConfigured(false); setError(null); }
+  const jobs = useMemo(() => { const all = data?.opportunities ?? []; if (filter === "low") return all.filter((job) => job.analysis?.risk.level === "low"); if (filter === "qualified") return all.filter((job) => job.analysis?.recommendation === "apply"); return all; }, [data, filter]);
+  const summary = data?.dashboard.summary; const approvalFor = (job: Opportunity) => data?.approvals.find((approval) => approval.opportunityId === job.id && approval.state === "pending"); const connectedPlatforms = data?.sessions?.filter((session) => session.loggedIn).map((session) => session.platform) ?? [];
+  async function decide(job: Opportunity, action: "approve" | "reject"): Promise<void> { const approval = approvalFor(job); if (!approval) return; setBusyApproval(true); setError(null); try { const response = await fetch(`/api/approvals/${encodeURIComponent(approval.id)}/${action}`, { method: "POST", headers: authHeaders() }); if (response.status === 401) { signOut(); throw new Error("Your session expired. Please sign in again."); } if (!response.ok) throw new Error(`Approval request failed (${response.status})`); setSelected(null); await refresh(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to save approval"); } finally { setBusyApproval(false); } }
   if (!config) return <div className="app-shell"><main><div className="empty">Loading configuration…</div></main></div>;
-
-  if (config.authentication === "supabase" && !getAccessToken()) {
-    return (
-      <div className="app-shell"><main><section className="panel auth-panel">
-        <p className="eyebrow">CLIENT RADAR</p><h1>Sign in</h1>
-        <p className="muted">Sign in to keep your opportunities, profile and approvals isolated to your account.</p>
-        {error && <div className="error">{error}</div>}
-        <label>Email<input type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label>
-        <label>Password<input type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" /></label>
-        <button className="approve auth-submit" onClick={() => void signIn()} disabled={authBusy || !email || !password}>{authBusy ? "Signing in…" : "Sign in"}</button>
-      </section></main></div>
-    );
-  }
-
-  return (
-    <div className="app-shell"><main>
-      <header>
-        <div><p className="eyebrow">TODAY'S OPPORTUNITIES</p><h1>Client Radar</h1><p className="muted">Public feeds + your logged-in platform sessions, ranked by fit and safety.</p></div>
-        <div className="header-actions">
-          {config.browserRadar && <button className="approve" onClick={() => void scanPlatforms()} disabled={scanningPlatforms}>{scanningPlatforms ? "Scanning platforms…" : "⌕ Scan my platforms"}</button>}
-          <button className="refresh" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? "Refreshing…" : "↻ Refresh radar"}</button>{config.authentication === "supabase" && <button className="refresh" onClick={signOut}>Sign out</button>}
-        </div>
-      </header>
-      {config.browserRadar && <div className="demo-note">Browser radar is read-only: it opens your local saved browser sessions and reads opportunity pages. It never submits applications or sends messages.</div>}
-      {connectedPlatforms.length > 0 && <div className="demo-note">Connected in last scan: {connectedPlatforms.join(" · ")}</div>}
-      {error && <div className="error">{error}</div>}
-      <section className="stats"><Stat label="Discovered" value={summary ? String(summary.discovered) : "—"} /><Stat label="Qualified" value={summary ? String(summary.qualified) : "—"} accent /><Stat label="Review" value={summary ? String(summary.review) : "—"} /><Stat label="Skipped" value={summary ? String(summary.skipped) : "—"} /></section>
-      <section className="panel">
-        <div className="panel-head"><div><h2>Top opportunities</h2><p className="muted">Sorted by match score · risk checked</p></div><div className="filters">{(["all", "low", "qualified"] as const).map((value) => <button key={value} className={filter === value ? "selected" : ""} onClick={() => setFilter(value)}>{value === "all" ? "All" : value === "low" ? "Low risk" : "Qualified"}</button>)}</div></div>
-        <div className="jobs">
-          {jobs.map((job) => {
-            const score = job.analysis?.match.score ?? 0;
-            const risk = job.analysis?.risk.level ?? "medium";
-            const approval = approvalFor(job);
-            return <article className="job" key={job.id}>
-              <div className="job-main"><div className="source">{job.source}</div><h3>{job.title}</h3><div className="tags">{job.skills.slice(0, 5).map((skill) => <span key={skill}>{skill}</span>)}</div><div className="meta"><span>◷ {job.workMode}</span><span>◆ {budgetLabel(job.budget)}</span><span className={`risk ${risk}`}>● {risk} risk</span></div></div>
-              <div className="score"><strong>{score}</strong><small>MATCH</small></div>
-              <div className="actions"><button className="review" onClick={() => setSelected(job)}>{approval ? "Review proposal" : job.analysis?.recommendation === "skip" ? "View details" : "Reviewed"}</button><button className="open" onClick={() => window.open(job.sourceUrl, "_blank", "noopener,noreferrer")}>Open job ↗</button></div>
-            </article>;
-          })}
-        </div>
-        {!data && !error && <div className="empty">Loading live opportunities…</div>}
-        {data && jobs.length === 0 && <div className="empty">No opportunities match this filter.</div>}
-      </section>
-      <p className="demo-note">Approval is always explicit. Approving a proposal does not submit an application or send a message.</p>
-    </main>
-    {selected && (
-      <div className="modal-backdrop" onClick={() => setSelected(null)}>
-        <section className="modal" onClick={(event) => event.stopPropagation()}>
-          <div className="modal-head"><div><span className="source">{selected.source}</span><h2>{selected.title}</h2></div><button className="close" onClick={() => setSelected(null)}>×</button></div>
-          <div className="proposal"><p className="eyebrow">PROPOSAL / ANALYSIS</p><p>{approvalFor(selected)?.proposal ?? selected.analysis?.match.fitReasons.join(" ") ?? selected.description}</p></div>
-          <div className="modal-actions"><button onClick={() => setSelected(null)}>Keep pending</button>{approvalFor(selected) && <><button onClick={() => void decide(selected, "reject")} disabled={busyApproval}>Reject</button><button className="approve" onClick={() => void decide(selected, "approve")} disabled={busyApproval}>{busyApproval ? "Saving…" : "Approve for next step"}</button></>}</div>
-          <small className="modal-safe">Approval only. This action does not submit an application or send a message.</small>
-        </section>
-      </div>
-    )}
-    </div>
-  );
+  if (config.authentication === "supabase" && !getAccessToken()) return <div className="app-shell"><main><section className="panel auth-panel"><p className="eyebrow">CLIENT RADAR</p><h1>Sign in</h1><p className="muted">Sign in to keep your opportunities, profile and approvals isolated to your account.</p>{error && <div className="error">{error}</div>}<label>Email<input type="email" value={email} onChange={(e) => setEmail(e.target.value)} autoComplete="email" /></label><label>Password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} autoComplete="current-password" /></label><button className="approve auth-submit" onClick={() => void signIn()} disabled={authBusy || !email || !password}>{authBusy ? "Signing in…" : "Sign in"}</button></section></main></div>;
+  return <div className="app-shell"><main><header><div><p className="eyebrow">PERSONAL CLIENT ACQUISITION</p><h1>Client Radar</h1><p className="muted">Discover → qualify → prepare → approve. External applications and messages remain explicit user actions.</p></div><div className="header-actions">{config.browserRadar && <button className="approve" onClick={() => void scanPlatforms()} disabled={scanningPlatforms}>{scanningPlatforms ? "Scanning platforms…" : "⌕ Scan my platforms"}</button>}<button className="refresh" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? "Refreshing…" : "↻ Refresh radar"}</button>{config.authentication === "supabase" && <button className="refresh" onClick={signOut}>Sign out</button>}</div></header>
+    {!profileConfigured && <div className="demo-note">Set up your master profile first. Matching, proposals, pricing guardrails and future client conversations will use it.</div>}
+    {config.browserRadar && <div className="demo-note">Browser radar is read-only: it opens local saved browser sessions and never submits applications or sends messages.</div>}{connectedPlatforms.length > 0 && <div className="demo-note">Connected in last scan: {connectedPlatforms.join(" · ")}</div>}{error && <div className="error">{error}</div>}
+    <ProfilePanel profile={profile} onSaved={(saved) => { setProfile(saved); setProfileConfigured(true); void refresh(); }} />
+    <section className="stats"><Stat label="Discovered" value={summary ? String(summary.discovered) : "—"} /><Stat label="Qualified" value={summary ? String(summary.qualified) : "—"} accent /><Stat label="Review" value={summary ? String(summary.review) : "—"} /><Stat label="Skipped" value={summary ? String(summary.skipped) : "—"} /></section>
+    <section className="panel"><div className="panel-head"><div><h2>Top opportunities</h2><p className="muted">Sorted by match score · risk checked</p></div><div className="filters">{(["all", "low", "qualified"] as const).map((value) => <button key={value} className={filter === value ? "selected" : ""} onClick={() => setFilter(value)}>{value === "all" ? "All" : value === "low" ? "Low risk" : "Qualified"}</button>)}</div></div><div className="jobs">{jobs.map((job) => { const score = job.analysis?.match.score ?? 0; const risk = job.analysis?.risk.level ?? "medium"; const approval = approvalFor(job); return <article className="job" key={job.id}><div className="job-main"><div className="source">{job.source}</div><h3>{job.title}</h3><div className="tags">{job.skills.slice(0, 5).map((skill) => <span key={skill}>{skill}</span>)}</div><div className="meta"><span>◷ {job.workMode}</span><span>◆ {budgetLabel(job.budget)}</span><span className={`risk ${risk}`}>● {risk} risk</span></div></div><div className="score"><strong>{score}</strong><small>MATCH</small></div><div className="actions"><button className="review" onClick={() => setSelected(job)}>{approval ? "Review proposal" : job.analysis?.recommendation === "skip" ? "View details" : "Reviewed"}</button><button className="open" onClick={() => window.open(job.sourceUrl, "_blank", "noopener,noreferrer")}>Open job ↗</button></div></article>; })}</div>{!data && !error && <div className="empty">Loading live opportunities…</div>}{data && jobs.length === 0 && <div className="empty">No opportunities match this filter.</div>}</section><p className="demo-note">Approval is always explicit. Approving a proposal does not submit an application or send a message.</p></main>
+    {selected && <div className="modal-backdrop" onClick={() => setSelected(null)}><section className="modal" onClick={(e) => e.stopPropagation()}><div className="modal-head"><div><span className="source">{selected.source}</span><h2>{selected.title}</h2></div><button className="close" onClick={() => setSelected(null)}>×</button></div><div className="proposal"><p className="eyebrow">PROPOSAL / ANALYSIS</p><p>{approvalFor(selected)?.proposal ?? selected.analysis?.match.fitReasons.join(" ") ?? selected.description}</p></div><div className="modal-actions"><button onClick={() => setSelected(null)}>Keep pending</button>{approvalFor(selected) && <><button onClick={() => void decide(selected, "reject")} disabled={busyApproval}>Reject</button><button className="approve" onClick={() => void decide(selected, "approve")} disabled={busyApproval}>{busyApproval ? "Saving…" : "Approve for next step"}</button></>}</div><small className="modal-safe">Approval only. This action does not submit an application or send a message.</small></section></div>}
+  </div>;
 }
-
 createRoot(document.getElementById("root")!).render(<App />);
