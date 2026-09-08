@@ -1,5 +1,4 @@
 import type { ClientRecord, ClientStage } from "./client.js";
-import type { Opportunity, OpportunityAnalysis } from "./opportunity.js";
 import type { RankedOpportunity } from "./rank.js";
 
 export type ActionType = "approval" | "reply" | "follow_up" | "review_opportunity" | "apply" | "deal_review";
@@ -24,7 +23,6 @@ const stagePriority: Partial<Record<ClientStage, number>> = {
   negotiation: 85,
   conversation: 80,
   replied: 75,
-  approached: 55,
 };
 
 export function buildActionQueue(
@@ -56,16 +54,17 @@ export function buildActionQueue(
   for (const client of clients) {
     const base = stagePriority[client.stage];
     if (base === undefined) continue;
+    const replyStage = client.stage === "replied" || client.stage === "conversation" || client.stage === "negotiation";
     items.push({
       id: `client:${client.id}:${client.stage}`,
-      type: client.stage === "final_approval" ? "deal_review" : client.stage === "replied" || client.stage === "conversation" ? "reply" : "follow_up",
+      type: client.stage === "final_approval" ? "deal_review" : replyStage ? "reply" : "deal_review",
       title: client.nextAction,
       summary: client.summary,
       priority: Math.min(109, base + Math.round(client.priorityScore * 0.25)),
       clientId: client.id,
       source: client.source,
       sourceUrl: client.sourceUrl,
-      requiresUserApproval: client.stage === "final_approval" || client.stage === "replied" || client.stage === "conversation",
+      requiresUserApproval: true,
       createdAt: client.updatedAt,
     });
   }
