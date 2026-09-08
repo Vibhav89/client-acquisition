@@ -1,3 +1,4 @@
+import type { PersonalAgentProfile } from "./master-profile.js";
 import type { CandidateProfile, Opportunity } from "./opportunity.js";
 import type { ClientIntelligence } from "./client.js";
 import type { RiskResult } from "./risk.js";
@@ -6,22 +7,31 @@ function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, Math.round(value)));
 }
 
-function suggestedPrice(opportunity: Opportunity, profile: CandidateProfile): number | undefined {
+type ClientProfile = CandidateProfile | PersonalAgentProfile;
+
+function suggestedPrice(opportunity: Opportunity, profile: ClientProfile): number | undefined {
   if (opportunity.budget?.currency?.toUpperCase() !== "USD") return undefined;
+  const negotiation = "negotiation" in profile ? profile.negotiation : undefined;
   if (opportunity.budget.unit === "hour") {
     const max = opportunity.budget.max;
-    if (typeof max === "number" && max > 0) return Math.max(profile.minimumHourlyUsd ?? 0, Math.round(max * 0.9));
+    const preferred = negotiation?.preferredHourlyUsd;
+    const minimum = negotiation?.minimumHourlyUsd ?? profile.minimumHourlyUsd ?? 0;
+    if (typeof preferred === "number" && preferred > 0) return Math.max(minimum, preferred);
+    if (typeof max === "number" && max > 0) return Math.max(minimum, Math.round(max * 0.9));
     return profile.minimumHourlyUsd;
   }
   if (opportunity.budget.unit === "fixed") {
     const max = opportunity.budget.max;
-    if (typeof max === "number" && max > 0) return Math.max(profile.minimumFixedUsd ?? 0, Math.round(max * 0.9));
+    const preferred = negotiation?.preferredFixedUsd;
+    const minimum = negotiation?.minimumFixedUsd ?? profile.minimumFixedUsd ?? 0;
+    if (typeof preferred === "number" && preferred > 0) return Math.max(minimum, preferred);
+    if (typeof max === "number" && max > 0) return Math.max(minimum, Math.round(max * 0.9));
     return profile.minimumFixedUsd;
   }
   return undefined;
 }
 
-export function analyzeClient(opportunity: Opportunity, profile: CandidateProfile, risk: RiskResult): ClientIntelligence {
+export function analyzeClient(opportunity: Opportunity, profile: ClientProfile, risk: RiskResult): ClientIntelligence {
   const matched = opportunity.skills.filter((skill) => profile.skills.some((mine) => mine.toLowerCase() === skill.toLowerCase()));
   const fitScore = clamp((matched.length / Math.max(opportunity.skills.length, 1)) * 70 + Math.min(30, matched.length * 5));
   const legitimacyScore = clamp(100 - risk.score);
