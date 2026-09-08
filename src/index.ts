@@ -35,6 +35,7 @@ export * from "./domain/security.js";
 export * from "./domain/scheduler.js";
 export * from "./domain/alerts.js";
 export * from "./domain/event-history.js";
+export * from "./domain/negotiation-guardrails.js";
 export * from "./integrations/browser-session.js";
 export * from "./integrations/platform-config.js";
 export * from "./integrations/platforms.js";
