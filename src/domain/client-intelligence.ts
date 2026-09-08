@@ -1,6 +1,6 @@
 import type { CandidateProfile, Opportunity } from "./opportunity.js";
 import type { ClientIntelligence } from "./client.js";
-import type { RiskResult } from "./opportunity.js";
+import type { RiskResult } from "./risk.js";
 
 function clamp(value: number, min = 0, max = 100): number {
   return Math.max(min, Math.min(max, Math.round(value)));
