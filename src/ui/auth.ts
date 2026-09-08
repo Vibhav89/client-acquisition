@@ -2,6 +2,8 @@ const TOKEN_KEY = "client-acquisition.access-token";
 
 export interface AuthConfig {
   authentication: "development" | "supabase";
+  browserRadar?: boolean;
+  platforms?: Array<{ platform: string; displayName: string }>;
   supabaseUrl?: string;
   supabaseAnonKey?: string;
 }
