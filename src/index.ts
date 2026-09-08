@@ -25,6 +25,7 @@ export * from "./domain/risk.js";
 export * from "./domain/source.js";
 export * from "./domain/persistence.js";
 export * from "./domain/security.js";
+export * from "./domain/scheduler.js";
 export * from "./integrations/browser-session.js";
 export * from "./integrations/platform-config.js";
 export * from "./integrations/platforms.js";
