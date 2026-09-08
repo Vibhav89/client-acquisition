@@ -1,6 +1,8 @@
 import { buildAlerts, buildSystemErrorAlert, type Alert } from "../domain/alerts.js";
 import { buildCommandCenterSnapshot, type CommandCenterSnapshot } from "./command-center.js";
 import { LocalRadarScheduler, type SchedulerRunResult, type SchedulerState } from "../domain/scheduler.js";
+import type { EventHistoryPort } from "../domain/event-history.js";
+import { recordAutomationRun, recordSchedulerRun } from "./history-service.js";
 import type { ApprovalRequest } from "../domain/approval.js";
 import type { ClientRecord } from "../domain/client.js";
 import type { RankedOpportunity } from "../domain/rank.js";
@@ -20,6 +22,7 @@ export interface AutomationOrchestratorOptions {
   intervalMs: number;
   discover: () => Promise<AutomationRunInput>;
   onSnapshot?: (snapshot: AutomationSnapshot) => void | Promise<void>;
+  history?: EventHistoryPort;
   now?: () => string;
 }
 
@@ -60,6 +63,12 @@ export class RadarAutomationOrchestrator {
           };
         } else if (this.latest) {
           this.latest = { ...this.latest, scheduler: this.scheduler.getState(), run };
+        }
+        if (options.history && this.latest) {
+          await recordAutomationRun(options.history, this.latest);
+        }
+        if (options.history) {
+          await recordSchedulerRun(options.history, run);
         }
         if (this.latest) await options.onSnapshot?.(this.latest);
       },
