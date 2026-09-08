@@ -2,10 +2,16 @@ import type { Opportunity } from "./opportunity.js";
 
 export type PlatformName = "linkedin" | "upwork" | "fiverr" | "outlier" | "generic";
 
+export interface BrowserLink {
+  readonly text: string;
+  readonly href: string;
+}
+
 export interface BrowserPage {
   readonly url: string;
   readonly title?: string;
   readonly text: string;
+  readonly links?: readonly BrowserLink[];
 }
 
 export interface PlatformSession {
