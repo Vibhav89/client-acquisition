@@ -39,6 +39,7 @@ export * from "./integrations/platforms.js";
 export * from "./integrations/platform-connectors.js";
 export * from "./integrations/generic-platform-connector.js";
 export * from "./integrations/supabase-repository.js";
+export * from "./integrations/supabase-event-history.js";
 export * from "./integrations/remoteok-source.js";
 export * from "./integrations/remotive-source.js";
 export * from "./integrations/opportunity-source-adapter.js";
