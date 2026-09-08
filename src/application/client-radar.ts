@@ -2,6 +2,7 @@ import { buildDashboardModel, type DashboardModel } from "./dashboard.js";
 import { discoverAndAnalyze, type OpportunitySource } from "./radar-service.js";
 import type { ApprovalRequest } from "../domain/approval.js";
 import type { CandidateProfile, Opportunity } from "../domain/opportunity.js";
+import type { PersonalAgentProfile } from "../domain/master-profile.js";
 import type { PersistencePort } from "../domain/persistence.js";
 import { DefaultApprovalService } from "./approval-service.js";
 
@@ -13,7 +14,7 @@ export interface ClientRadarRun {
 }
 
 export async function runClientRadar(
-  sources: readonly OpportunitySource[], profile: CandidateProfile, persistence: PersistencePort,
+  sources: readonly OpportunitySource[], profile: CandidateProfile | PersonalAgentProfile, persistence: PersistencePort,
   now = new Date().toISOString(),
 ): Promise<ClientRadarRun> {
   const result = await discoverAndAnalyze(sources, profile);
