@@ -16,6 +16,8 @@ import { getSupabaseAuthUser, SupabaseRestClient } from "./integrations/supabase
 import type { CandidateProfile } from "./domain/opportunity.js";
 import type { PersistencePort } from "./domain/persistence.js";
 import type { ProfilePersistencePort } from "./domain/profile-persistence.js";
+import type { PersonalAgentProfile } from "./domain/master-profile.js";
+import { toCandidateProfile } from "./domain/master-profile.js";
 
 const port = Number(process.env.PORT ?? 8787);
 const root = fileURLToPath(new URL("../dist", import.meta.url));
@@ -72,8 +74,7 @@ async function requestContext(req: IncomingMessage): Promise<RequestContext | un
 
 async function loadProfile(profilePersistence: ProfilePersistencePort): Promise<CandidateProfile> {
   const saved = await profilePersistence.getProfile();
-  if (saved) return saved;
-  await profilePersistence.saveProfile(defaultCandidateProfile);
+  if (saved) return toCandidateProfile(saved);
   return defaultCandidateProfile;
 }
 
@@ -93,6 +94,12 @@ export async function handleRequest(req: IncomingMessage, res: ServerResponse): 
       const context = await requestContext(req);
       if (!context) {
         sendJson(res, 401, { error: "Authentication required" });
+        return;
+      }
+
+      if (url.pathname === "/api/profile" && req.method === "GET") {
+        const profile = await context.profilePersistence.getProfile();
+        sendJson(res, 200, { configured: Boolean(profile), profile: profile ?? null });
         return;
       }
 
