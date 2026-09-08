@@ -9,7 +9,8 @@ type Opportunity = {
   analysis?: { match: { score: number; matchedSkills: string[]; fitReasons: string[] }; risk: { level: "low" | "medium" | "high" }; recommendation: "apply" | "review" | "skip" };
 };
 type Approval = { id: string; opportunityId: string; proposal: string; state: string };
-type ApiData = { dashboard: { summary: { discovered: number; qualified: number; review: number; skipped: number } }; opportunities: Opportunity[]; approvals: Approval[] };
+type Session = { platform: string; loggedIn: boolean; checkedAt: string };
+type ApiData = { dashboard: { summary: { discovered: number; qualified: number; review: number; skipped: number } }; opportunities: Opportunity[]; approvals: Approval[]; sessions?: Session[] };
 
 function budgetLabel(budget?: Opportunity["budget"]): string {
   if (!budget) return "Budget not listed";
@@ -32,6 +33,7 @@ export function App() {
   const [filter, setFilter] = useState<"all" | "low" | "qualified">("all");
   const [selected, setSelected] = useState<Opportunity | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [scanningPlatforms, setScanningPlatforms] = useState(false);
   const [busyApproval, setBusyApproval] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +51,18 @@ export function App() {
       setData(await response.json() as ApiData);
     } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to load radar"); }
     finally { setRefreshing(false); }
+  }
+
+  async function scanPlatforms(): Promise<void> {
+    setScanningPlatforms(true); setError(null);
+    try {
+      const response = await fetch("/api/platform-radar", { cache: "no-store", headers: authHeaders() });
+      if (response.status === 401) { clearAccessToken(); throw new Error("Please sign in to scan your platform sessions."); }
+      if (response.status === 409) throw new Error("Browser radar is disabled. Enable it with CLIENT_RADAR_BROWSER_ENABLED=true.");
+      if (!response.ok) throw new Error(`Platform radar failed (${response.status})`);
+      setData(await response.json() as ApiData);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : "Unable to scan platforms"); }
+    finally { setScanningPlatforms(false); }
   }
 
   useEffect(() => {
@@ -73,6 +87,7 @@ export function App() {
   }, [data, filter]);
   const summary = data?.dashboard.summary;
   const approvalFor = (job: Opportunity) => data?.approvals.find((approval) => approval.opportunityId === job.id && approval.state === "pending");
+  const connectedPlatforms = data?.sessions?.filter((session) => session.loggedIn).map((session) => session.platform) ?? [];
 
   async function decide(job: Opportunity, action: "approve" | "reject"): Promise<void> {
     const approval = approvalFor(job); if (!approval) return;
@@ -104,9 +119,14 @@ export function App() {
   return (
     <div className="app-shell"><main>
       <header>
-        <div><p className="eyebrow">TODAY'S OPPORTUNITIES</p><h1>Client Radar</h1><p className="muted">Live public opportunities, ranked by fit and safety.</p></div>
-        <div className="header-actions"><button className="refresh" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? "Refreshing…" : "↻ Refresh radar"}</button>{config.authentication === "supabase" && <button className="refresh" onClick={signOut}>Sign out</button>}</div>
+        <div><p className="eyebrow">TODAY'S OPPORTUNITIES</p><h1>Client Radar</h1><p className="muted">Public feeds + your logged-in platform sessions, ranked by fit and safety.</p></div>
+        <div className="header-actions">
+          {config.browserRadar && <button className="approve" onClick={() => void scanPlatforms()} disabled={scanningPlatforms}>{scanningPlatforms ? "Scanning platforms…" : "⌕ Scan my platforms"}</button>}
+          <button className="refresh" onClick={() => void refresh()} disabled={refreshing}>{refreshing ? "Refreshing…" : "↻ Refresh radar"}</button>{config.authentication === "supabase" && <button className="refresh" onClick={signOut}>Sign out</button>}
+        </div>
       </header>
+      {config.browserRadar && <div className="demo-note">Browser radar is read-only: it opens your local saved browser sessions and reads opportunity pages. It never submits applications or sends messages.</div>}
+      {connectedPlatforms.length > 0 && <div className="demo-note">Connected in last scan: {connectedPlatforms.join(" · ")}</div>}
       {error && <div className="error">{error}</div>}
       <section className="stats"><Stat label="Discovered" value={summary ? String(summary.discovered) : "—"} /><Stat label="Qualified" value={summary ? String(summary.qualified) : "—"} accent /><Stat label="Review" value={summary ? String(summary.review) : "—"} /><Stat label="Skipped" value={summary ? String(summary.skipped) : "—"} /></section>
       <section className="panel">
@@ -126,7 +146,7 @@ export function App() {
         {!data && !error && <div className="empty">Loading live opportunities…</div>}
         {data && jobs.length === 0 && <div className="empty">No opportunities match this filter.</div>}
       </section>
-      <p className="demo-note">Live radar API connected · discovery and proposal review run server-side. Approval does not submit an application or send a message.</p>
+      <p className="demo-note">Approval is always explicit. Approving a proposal does not submit an application or send a message.</p>
     </main>
     {selected && (
       <div className="modal-backdrop" onClick={() => setSelected(null)}>
