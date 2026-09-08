@@ -6,7 +6,10 @@ import type { PersistencePort } from "../domain/persistence.js";
 import type { BrowserPlatformConfig, BrowserSessionPort } from "../integrations/browser-session.js";
 import type { PlatformSession } from "../domain/platform.js";
 import { createBrowserOpportunitySource } from "../domain/platform.js";
-import { defaultPlatformConnectors } from "../integrations/platforms.js";
+import { createPlatformRegistry } from "../domain/platform-registry.js";
+import { createGenericPlatformConnector } from "../integrations/generic-platform-connector.js";
+import { createDefaultPlatformConnectors } from "../integrations/platform-connectors.js";
+import { getPlatformDefinitions } from "../integrations/platform-config.js";
 
 export interface PlatformRadarRun {
   dashboard: DashboardModel;
@@ -23,6 +26,14 @@ export async function runPlatformRadar(
   persistence: PersistencePort,
   now = new Date().toISOString(),
 ): Promise<PlatformRadarRun> {
+  const definitions = getPlatformDefinitions();
+  const registry = createPlatformRegistry(
+    definitions,
+    [
+      ...createDefaultPlatformConnectors(definitions),
+      ...definitions.filter((definition) => !["linkedin", "upwork", "fiverr", "outlier"].includes(definition.platform)).map(createGenericPlatformConnector),
+    ],
+  );
   const pages = [];
   const sessions: PlatformSession[] = [];
 
@@ -36,7 +47,7 @@ export async function runPlatformRadar(
     }
   }
 
-  const source = createBrowserOpportunitySource(defaultPlatformConnectors);
+  const source = createBrowserOpportunitySource(registry.connectors);
   const discovered = await source.discoverFromPages(pages);
   const radar = runRadar(discovered, profile);
   for (const ranked of radar.ranked) await persistence.saveOpportunity(ranked.opportunity);

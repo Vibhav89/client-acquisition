@@ -1,6 +1,15 @@
 import type { Opportunity } from "./opportunity.js";
 
-export type PlatformName = "linkedin" | "upwork" | "fiverr" | "outlier" | "generic";
+/** Platform IDs are data, not a closed enum, so new sites can be registered without changing core code. */
+export type PlatformName = string;
+
+export interface PlatformDefinition {
+  readonly platform: PlatformName;
+  readonly displayName: string;
+  readonly hosts: readonly string[];
+  readonly startUrl: string;
+  readonly envDirectory: string;
+}
 
 export interface BrowserLink {
   readonly text: string;
