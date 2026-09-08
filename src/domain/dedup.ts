@@ -5,16 +5,17 @@ function text(value: string | undefined): string {
 }
 
 export function canonicalOpportunityKey(opportunity: Opportunity): string {
+  const source = text(opportunity.source);
   try {
     const url = new URL(opportunity.sourceUrl);
     url.hash = "";
     for (const key of [...url.searchParams.keys()]) {
       if (/^(utm_|ref$|source$|campaign$|tracking)/i.test(key)) url.searchParams.delete(key);
     }
-    return `url:${url.toString().replace(/\/$/, "")}`;
+    return `source:${source}|url:${url.toString().replace(/\/$/, "")}`;
   } catch {
     const company = text(opportunity.client?.name);
-    return `text:${text(opportunity.title)}|${company}`;
+    return `source:${source}|text:${text(opportunity.title)}|${company}`;
   }
 }
 
