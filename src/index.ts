@@ -22,6 +22,7 @@ export * from "./domain/deal.js";
 export * from "./domain/follow-up.js";
 export * from "./domain/learning.js";
 export * from "./domain/master-profile.js";
+export * from "./domain/onboarding.js";
 export * from "./domain/match.js";
 export * from "./domain/normalizer.js";
 export * from "./domain/opportunity.js";
