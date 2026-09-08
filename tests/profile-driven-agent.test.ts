@@ -9,7 +9,7 @@ const profile: PersonalAgentProfile = {
   headline: "Senior TypeScript engineer",
   bio: "Builds production TypeScript systems.",
   skills: ["TypeScript", "React"],
-  evidence: [{ skill: "TypeScript", evidence: "Built production TypeScript applications" }],
+  evidence: [{ skill: "TypeScript", evidence: "Built production TypeScript applications", strength: 1 }],
   preferredWorkModes: ["remote"],
   minimumHourlyUsd: 10,
   minimumFixedUsd: 50,
@@ -36,6 +36,7 @@ const source: OpportunitySource = {
     id: "profile-job",
     source: "test-source",
     sourceUrl: "https://example.com/job/profile-job",
+    url: "https://example.com/job/profile-job",
     title: "TypeScript API work",
     description: "Build a TypeScript API",
     skills: ["TypeScript"],
@@ -64,6 +65,8 @@ describe("profile-driven agent", () => {
       description: "Build a TypeScript API",
       skills: ["TypeScript"],
       workMode: "remote",
+      status: "new",
+      discoveredAt: new Date().toISOString(),
     }, store);
     expect(proposal.body).toContain("Profile Owner");
     expect(proposal.personalization).toContain("Relevant service: TypeScript development");

@@ -4,7 +4,7 @@ import type { PersonalAgentProfile } from "../src/domain/master-profile.js";
 
 const profile = {
   displayName: "  Vibhav  ", headline: " AI developer ", bio: "  Builds useful tools.  ",
-  skills: ["React", "React", " TypeScript "], evidence: ["portfolio"], preferredWorkModes: ["remote"],
+  skills: ["React", "React", " TypeScript "], evidence: [{ skill: "React", evidence: "portfolio", strength: 1 }], preferredWorkModes: ["remote"],
   portfolio: [{ title: " Demo ", description: " Project ", skills: ["React", "React"] }],
   services: [{ name: " AI integration ", description: " APIs ", minimumUsd: 25, deliveryDays: 5 }],
   platformAccounts: [{ platform: " Upwork ", username: " user ", enabled: true }],
@@ -23,7 +23,7 @@ describe("master profile onboarding", () => {
     const normalized = normalizeOnboardingProfile(profile, "2026-09-08T12:00:00.000Z");
     expect(normalized.displayName).toBe("Vibhav");
     expect(normalized.skills).toEqual(["React", "TypeScript"]);
-    expect(normalized.portfolio[0].skills).toEqual(["React"]);
+    expect(normalized.portfolio[0]?.skills).toEqual(["React"]);
     expect(normalized.redFlags).toEqual(["crypto"]);
     expect(normalized.lastUpdatedAt).toBe("2026-09-08T12:00:00.000Z");
   });

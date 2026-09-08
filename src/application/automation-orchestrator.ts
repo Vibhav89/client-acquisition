@@ -10,7 +10,7 @@ import type { RankedOpportunity } from "../domain/rank.js";
 export interface AutomationRunInput {
   clients: readonly ClientRecord[];
   opportunities: readonly RankedOpportunity[];
-  approvals?: readonly ApprovalRequest[];
+  approvals?: readonly ApprovalRequest[] | undefined;
 }
 
 export interface AutomationSnapshot extends CommandCenterSnapshot {
@@ -21,13 +21,13 @@ export interface AutomationSnapshot extends CommandCenterSnapshot {
 export interface AutomationOrchestratorOptions {
   intervalMs: number;
   discover: () => Promise<AutomationRunInput>;
-  onSnapshot?: (snapshot: AutomationSnapshot) => void | Promise<void>;
-  history?: EventHistoryPort;
-  now?: () => string;
+  onSnapshot?: ((snapshot: AutomationSnapshot) => void | Promise<void>) | undefined;
+  history?: EventHistoryPort | undefined;
+  now?: (() => string) | undefined;
 }
 
 export class RadarAutomationOrchestrator {
-  private latest?: AutomationSnapshot;
+  private latest?: AutomationSnapshot | undefined;
   private readonly scheduler: LocalRadarScheduler;
   private readonly options: AutomationOrchestratorOptions;
 
@@ -50,8 +50,8 @@ export class RadarAutomationOrchestrator {
       onResult: async (run) => {
         const generatedAt = options.now?.() ?? new Date().toISOString();
         if (run.error) {
-          const base = this.latest ?? {
-            actions: [], pendingApprovals: 0, activeClients: 0, qualifiedOpportunities: 0,
+          const base: CommandCenterSnapshot & { alerts?: Alert[] | undefined } = this.latest ?? {
+            actions: [], pendingApprovals: 0, activeClients: 0, qualifiedOpportunities: 0, dueFollowUps: 0,
             generatedAt,
           };
           this.latest = {

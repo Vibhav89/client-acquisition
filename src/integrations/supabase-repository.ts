@@ -53,6 +53,126 @@ export class SupabasePersistence implements PersistencePort {
     if (error) throw new Error(`Failed to list approvals: ${error.message}`);
     return (data ?? []).filter((row) => (row as Record<string, unknown>).state === "pending").map((row) => this.approvalFromRow(row as Record<string, unknown>));
   }
+
+  async saveClient(client: any): Promise<void> {
+    const { error } = await this.client.from("clients").upsert({
+      id: client.id, user_id: this.userId, opportunity_ids: client.opportunityIds, source: client.source, source_url: client.sourceUrl,
+      name: client.name ?? null, country: client.country ?? null, verified: client.verified ?? null, hire_rate: client.hireRate ?? null, total_spent: client.totalSpent ?? null,
+      stage: client.stage, fit_score: client.fitScore, legitimacy_score: client.legitimacyScore, priority_score: client.priorityScore, summary: client.summary,
+      needs: client.needs, objections: client.objections, approach_angle: client.approachAngle, suggested_price_usd: client.suggestedPriceUsd ?? null,
+      suggested_delivery_days: client.suggestedDeliveryDays ?? null, next_action: client.nextAction, created_at: client.createdAt, updated_at: client.updatedAt,
+    }, { onConflict: "user_id,id" });
+    if (error) throw new Error(`Failed to save client: ${error.message}`);
+  }
+
+  async getClient(id: string): Promise<any> {
+    const { data, error } = await this.client.from("clients").select("*").eq("id", id).eq("user_id", this.userId);
+    if (error) throw new Error(`Failed to read client: ${error.message}`);
+    const row = data?.[0] as Record<string, unknown> | undefined;
+    return row ? this.clientFromRow(row) : undefined;
+  }
+
+  async listClients(): Promise<any[]> {
+    const { data, error } = await this.client.from("clients").select("*").eq("user_id", this.userId).order("updated_at", { ascending: false });
+    if (error) throw new Error(`Failed to list clients: ${error.message}`);
+    return (data ?? []).map((row) => this.clientFromRow(row as Record<string, unknown>));
+  }
+
+  async saveMessage(message: any): Promise<void> {
+    const { error } = await this.client.from("conversations").upsert({
+      id: message.id, user_id: this.userId, client_id: message.clientId, direction: message.direction, body: message.body, channel: message.channel ?? null, timestamp: message.timestamp,
+    }, { onConflict: "user_id,id" });
+    if (error) throw new Error(`Failed to save message: ${error.message}`);
+  }
+
+  async listMessages(clientId: string): Promise<any[]> {
+    const { data, error } = await this.client.from("conversations").select("*").eq("client_id", clientId).eq("user_id", this.userId).order("timestamp", { ascending: true });
+    if (error) throw new Error(`Failed to list messages: ${error.message}`);
+    return (data ?? []).map((row) => this.messageFromRow(row as Record<string, unknown>));
+  }
+
+  async saveDeal(deal: any): Promise<void> {
+    const { error } = await this.client.from("deals").upsert({
+      id: deal.id, user_id: this.userId, client_id: deal.clientId, state: deal.state, terms: deal.terms, rationale: deal.rationale, created_at: deal.createdAt, decided_at: deal.decidedAt ?? null,
+    }, { onConflict: "user_id,id" });
+    if (error) throw new Error(`Failed to save deal: ${error.message}`);
+  }
+
+  async getDeal(id: string): Promise<any> {
+    const { data, error } = await this.client.from("deals").select("*").eq("id", id).eq("user_id", this.userId);
+    if (error) throw new Error(`Failed to read deal: ${error.message}`);
+    const row = data?.[0] as Record<string, unknown> | undefined;
+    return row ? this.dealFromRow(row) : undefined;
+  }
+
+  async listDeals(): Promise<any[]> {
+    const { data, error } = await this.client.from("deals").select("*").eq("user_id", this.userId).order("created_at", { ascending: false });
+    if (error) throw new Error(`Failed to list deals: ${error.message}`);
+    return (data ?? []).map((row) => this.dealFromRow(row as Record<string, unknown>));
+  }
+
+  async saveApplication(app: any): Promise<void> {
+    const { error } = await this.client.from("applications").upsert({
+      id: app.id, user_id: this.userId, client_id: app.clientId ?? null, opportunity_id: app.opportunityId, source: app.source, source_url: app.sourceUrl, status: app.status, notes: app.notes ?? null, created_at: app.createdAt, updated_at: app.updatedAt,
+    }, { onConflict: "user_id,id" });
+    if (error) throw new Error(`Failed to save application: ${error.message}`);
+  }
+
+  async getApplication(id: string): Promise<any> {
+    const { data, error } = await this.client.from("applications").select("*").eq("id", id).eq("user_id", this.userId);
+    if (error) throw new Error(`Failed to read application: ${error.message}`);
+    const row = data?.[0] as Record<string, unknown> | undefined;
+    return row ? this.applicationFromRow(row) : undefined;
+  }
+
+  async listApplications(): Promise<any[]> {
+    const { data, error } = await this.client.from("applications").select("*").eq("user_id", this.userId).order("updated_at", { ascending: false });
+    if (error) throw new Error(`Failed to list applications: ${error.message}`);
+    return (data ?? []).map((row) => this.applicationFromRow(row as Record<string, unknown>));
+  }
+
+  async saveEarnings(record: any): Promise<void> {
+    if (!Number.isFinite(record.amount) || record.amount <= 0) throw new Error("Earnings amount must be greater than zero");
+    const { error } = await this.client.from("earnings").upsert({
+      id: record.id, user_id: this.userId, client_id: record.clientId ?? null, application_id: record.applicationId ?? null, project_title: record.projectTitle, amount: record.amount, currency: record.currency, received_at: record.receivedAt, notes: record.notes ?? null,
+    }, { onConflict: "user_id,id" });
+    if (error) throw new Error(`Failed to save earnings: ${error.message}`);
+  }
+
+  async listEarnings(): Promise<any[]> {
+    const { data, error } = await this.client.from("earnings").select("*").eq("user_id", this.userId).order("received_at", { ascending: false });
+    if (error) throw new Error(`Failed to list earnings: ${error.message}`);
+    return (data ?? []).map((row) => this.earningsFromRow(row as Record<string, unknown>));
+  }
+
+  private clientFromRow(row: Record<string, unknown>): any {
+    return {
+      id: String(row.id), opportunityIds: Array.isArray(row.opportunity_ids) ? row.opportunity_ids.map(String) : [], source: String(row.source), sourceUrl: String(row.source_url),
+      ...(typeof row.name === "string" ? { name: row.name } : {}), ...(typeof row.country === "string" ? { country: row.country } : {}), ...(typeof row.verified === "boolean" ? { verified: row.verified } : {}),
+      ...(typeof row.hire_rate === "number" ? { hireRate: row.hire_rate } : {}), ...(typeof row.total_spent === "number" ? { totalSpent: row.total_spent } : {}),
+      stage: String(row.stage), fitScore: Number(row.fit_score), legitimacyScore: Number(row.legitimacy_score), priorityScore: Number(row.priority_score),
+      summary: String(row.summary), needs: Array.isArray(row.needs) ? row.needs.map(String) : [], objections: Array.isArray(row.objections) ? row.objections.map(String) : [],
+      approachAngle: String(row.approach_angle), ...(typeof row.suggested_price_usd === "number" ? { suggestedPriceUsd: row.suggested_price_usd } : {}),
+      ...(typeof row.suggested_delivery_days === "number" ? { suggestedDeliveryDays: row.suggested_delivery_days } : {}), nextAction: String(row.next_action),
+      createdAt: String(row.created_at), updatedAt: String(row.updated_at),
+    };
+  }
+
+  private messageFromRow(row: Record<string, unknown>): any {
+    return { id: String(row.id), clientId: String(row.client_id), direction: row.direction as "inbound" | "outbound", body: String(row.body), ...(typeof row.channel === "string" ? { channel: row.channel } : {}), timestamp: String(row.timestamp) };
+  }
+
+  private dealFromRow(row: Record<string, unknown>): any {
+    return { id: String(row.id), clientId: String(row.client_id), state: row.state as any, terms: row.terms as any, rationale: Array.isArray(row.rationale) ? row.rationale.map(String) : [], createdAt: String(row.created_at), ...(typeof row.decided_at === "string" ? { decidedAt: row.decided_at } : {}) };
+  }
+
+  private applicationFromRow(row: Record<string, unknown>): any {
+    return { id: String(row.id), ...(typeof row.client_id === "string" ? { clientId: row.client_id } : {}), opportunityId: String(row.opportunity_id), source: String(row.source), sourceUrl: String(row.source_url), status: row.status as any, ...(typeof row.notes === "string" ? { notes: row.notes } : {}), createdAt: String(row.created_at), updatedAt: String(row.updated_at) };
+  }
+
+  private earningsFromRow(row: Record<string, unknown>): any {
+    return { id: String(row.id), ...(typeof row.client_id === "string" ? { clientId: row.client_id } : {}), ...(typeof row.application_id === "string" ? { applicationId: row.application_id } : {}), projectTitle: String(row.project_title), amount: Number(row.amount), currency: String(row.currency), receivedAt: String(row.received_at), ...(typeof row.notes === "string" ? { notes: row.notes } : {}) };
+  }
   private fromRow(row: Record<string, unknown>): Opportunity {
     const budget = row.budget && typeof row.budget === "object" ? row.budget as Opportunity["budget"] : undefined;
     const client = row.client && typeof row.client === "object" ? row.client as Opportunity["client"] : undefined;

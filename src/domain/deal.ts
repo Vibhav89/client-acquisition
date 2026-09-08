@@ -7,7 +7,7 @@ export interface DealTerms {
   deliverables: string[];
   assumptions: string[];
   risks: string[];
-  paymentTerms?: string;
+  paymentTerms?: string | undefined;
 }
 
 export interface DealApproval {
@@ -17,7 +17,7 @@ export interface DealApproval {
   terms: DealTerms;
   rationale: string[];
   createdAt: string;
-  decidedAt?: string;
+  decidedAt?: string | undefined;
 }
 
 const transitions: Record<DealState, readonly DealState[]> = {

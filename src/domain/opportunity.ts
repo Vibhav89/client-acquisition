@@ -32,8 +32,8 @@ export interface CandidateProfile {
   skills: string[];
   evidence: Array<{ skill: string; evidence: string; strength: number }>;
   preferredWorkModes: WorkMode[];
-  minimumHourlyUsd?: number;
-  minimumFixedUsd?: number;
+  minimumHourlyUsd?: number | undefined;
+  minimumFixedUsd?: number | undefined;
 }
 
 export interface MatchResult {

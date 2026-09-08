@@ -12,7 +12,7 @@ export interface ConversationDecision {
   reasons: string[];
 }
 
-const closeSignals = /deal|finali[sz]e|hire you|start (the )?(project|work)|send (the )?contract|offer|ready to proceed|move forward/i;
+const closeSignals = /deal|finali[sz]e|hire you|start|send (the )?contract|offer|ready to proceed|move forward/i;
 const priceSignals = /budget|price|rate|cost|quote|how much|hourly/i;
 const timelineSignals = /deadline|timeline|deliver|how long|when can you/i;
 const meetingSignals = /call|meeting|zoom|meet|interview/i;

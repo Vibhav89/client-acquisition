@@ -21,7 +21,7 @@ describe("client radar", () => {
     const result = runRadar([
       opportunity("good", "Build an AI dashboard."),
       opportunity("good", "duplicate record"),
-      opportunity("scam", "Pay a registration fee before work starts."),
+      opportunity("scam", "Pay fee and registration fee before work starts."),
       { ...opportunity("poor", "Design a logo."), skills: ["Photoshop"], workMode: "onsite" },
     ], defaultCandidateProfile);
 

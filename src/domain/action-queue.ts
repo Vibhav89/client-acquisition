@@ -9,10 +9,10 @@ export interface ActionItem {
   title: string;
   summary: string;
   priority: number;
-  clientId?: string;
-  opportunityId?: string;
-  source?: string;
-  sourceUrl?: string;
+  clientId?: string | undefined;
+  opportunityId?: string | undefined;
+  source?: string | undefined;
+  sourceUrl?: string | undefined;
   requiresUserApproval: boolean;
   createdAt: string;
 }

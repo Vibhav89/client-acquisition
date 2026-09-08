@@ -13,7 +13,7 @@ const profile: CandidateProfile = {
 const opportunity: Opportunity = {
   id: "job-approval", source: "test", sourceUrl: "https://example.com/job-approval",
   title: "TypeScript React AI Engineer", description: "Build a remote application.",
-  skills: ["TypeScript", "React", "AI"], workMode: "remote", status: "new", discoveredAt: "2026-09-07T00:00:00Z",
+  skills: ["TypeScript", "React", "AI"], workMode: "remote", budget: { currency: "USD", min: 50, max: 100, unit: "hour" }, status: "new", discoveredAt: "2026-09-07T00:00:00Z",
 };
 
 describe("approval service", () => {

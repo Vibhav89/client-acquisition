@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { PersonalWorkflowOrchestrator } from "../src/application/workflow-orchestrator.js";
+import type { WorkMode } from "../src/domain/opportunity.js";
 
-const profile = { displayName: "Test", headline: "Builder", bio: "Builder", skills: ["TypeScript"], evidence: [{ skill: "TypeScript", evidence: "work", strength: "strong" }], preferredWorkModes: ["remote"] as const, minimumHourlyUsd: 10, minimumFixedUsd: 10, location: "India", portfolio: [], services: [], platformAccounts: [], communicationStyle: "professional" as const, negotiation: { minimumFixedUsd: 10, maxDiscountPercent: 10, requireScopeConfirmation: true, requireFinalApproval: true }, redFlags: [], lastUpdatedAt: "2026-09-09T00:00:00.000Z" };
-const opportunity = { id: "opp:1", source: "test", sourceUrl: "https://example.com/job/1", title: "TypeScript dashboard", description: "Build a dashboard", skills: ["TypeScript"], workMode: "remote" as const, discoveredAt: "2026-09-09T00:00:00.000Z" };
+const profile = { displayName: "Test", headline: "Builder", bio: "Builder", skills: ["TypeScript"], evidence: [{ skill: "TypeScript", evidence: "work", strength: 1 }], preferredWorkModes: ["remote" as WorkMode], minimumHourlyUsd: 10, minimumFixedUsd: 10, location: "India", portfolio: [], services: [], platformAccounts: [], communicationStyle: "professional" as const, negotiation: { minimumFixedUsd: 10, maxDiscountPercent: 10, requireScopeConfirmation: true, requireFinalApproval: true }, redFlags: [], lastUpdatedAt: "2026-09-09T00:00:00.000Z" };
+const opportunity = { id: "opp:1", source: "test", sourceUrl: "https://example.com/job/1", title: "TypeScript dashboard", description: "Build a dashboard", skills: ["TypeScript"], workMode: "remote" as const, status: "new" as const, discoveredAt: "2026-09-09T00:00:00.000Z" };
 const client = { id: "client:1", opportunityIds: ["opp:1"], source: "test", sourceUrl: opportunity.sourceUrl, stage: "interested" as const, fitScore: 80, legitimacyScore: 90, priorityScore: 85, summary: "Good fit", needs: [], objections: [], approachAngle: "", nextAction: "final approval", createdAt: opportunity.discoveredAt, updatedAt: opportunity.discoveredAt };
 
 describe("personal workflow orchestrator", () => {

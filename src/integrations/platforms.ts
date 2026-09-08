@@ -28,7 +28,8 @@ function inferSkills(text: string): string[] {
 function extractLinkedOpportunities(platform: PlatformName, page: BrowserPage): Opportunity[] {
   const links = (page.links ?? [])
     .filter((link) => opportunityWords.test(link.text))
-    .filter((link) => hostMatches(link.href, platformHosts[platform as Exclude<PlatformName, "generic">]))
+    .filter((link) => hostMatches(link.href, platformHosts[platform as Exclude<PlatformName, "generic">] ?? []))
+    .filter((link) => /\/(jobs?|projects?|gigs?|tasks?|contracts?)\//i.test(link.href) || /\/~[a-z0-9]+/i.test(link.href))
     .filter((link) => link.text.length >= 8 && link.text.length <= 180);
   const unique = [...new Map(links.map((link) => [link.href.split("#")[0], link])).values()].slice(0, 50);
 
@@ -49,7 +50,7 @@ function connector(platform: Exclude<PlatformName, "generic">, displayName: stri
   return {
     platform,
     displayName,
-    canHandle: (page) => hostMatches(page.url, platformHosts[platform]),
+    canHandle: (page) => hostMatches(page.url, platformHosts[platform] ?? []),
     async extractOpportunities(page) {
       return extractLinkedOpportunities(platform, page);
     },

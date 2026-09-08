@@ -1,8 +1,8 @@
 export interface SchedulerState {
   running: boolean;
-  lastStartedAt?: string;
-  lastFinishedAt?: string;
-  lastError?: string;
+  lastStartedAt?: string | undefined;
+  lastFinishedAt?: string | undefined;
+  lastError?: string | undefined;
   runCount: number;
 }
 
@@ -10,18 +10,18 @@ export interface SchedulerRunResult {
   startedAt: string;
   finishedAt: string;
   skipped: boolean;
-  error?: string;
+  error?: string | undefined;
 }
 
 export interface RadarSchedulerOptions {
   intervalMs: number;
-  now?: () => string;
+  now?: (() => string) | undefined;
   onRun: () => Promise<void>;
-  onResult?: (result: SchedulerRunResult) => void | Promise<void>;
+  onResult?: ((result: SchedulerRunResult) => void | Promise<void>) | undefined;
 }
 
 export class LocalRadarScheduler {
-  private timer?: ReturnType<typeof setInterval>;
+  private timer?: ReturnType<typeof setInterval> | undefined;
   private running = false;
   private state: SchedulerState = { running: false, runCount: 0 };
 

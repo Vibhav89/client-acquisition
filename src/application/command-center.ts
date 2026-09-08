@@ -11,17 +11,17 @@ export interface CommandCenterSnapshot {
   activeClients: number;
   qualifiedOpportunities: number;
   dueFollowUps: number;
-  scheduler?: SchedulerState;
+  scheduler?: SchedulerState | undefined;
   generatedAt: string;
 }
 
 export function buildCommandCenterSnapshot(input: {
   clients: readonly ClientRecord[];
   opportunities: readonly RankedOpportunity[];
-  approvals?: readonly ApprovalRequest[];
-  scheduler?: SchedulerState;
-  now?: string;
-  followUpPolicy?: Partial<FollowUpPolicy>;
+  approvals?: readonly ApprovalRequest[] | undefined;
+  scheduler?: SchedulerState | undefined;
+  now?: string | undefined;
+  followUpPolicy?: Partial<FollowUpPolicy> | undefined;
 }): CommandCenterSnapshot {
   const generatedAt = input.now ?? new Date().toISOString();
   const approvals = input.approvals ?? [];

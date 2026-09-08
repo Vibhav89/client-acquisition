@@ -2,12 +2,12 @@ export type ApplicationStatus = "draft" | "approved" | "applied" | "interview" |
 
 export interface ApplicationRecord {
   id: string;
-  clientId?: string;
+  clientId?: string | undefined;
   opportunityId: string;
   source: string;
   sourceUrl: string;
   status: ApplicationStatus;
-  notes?: string;
+  notes?: string | undefined;
   createdAt: string;
   updatedAt: string;
 }

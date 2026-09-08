@@ -1,12 +1,12 @@
 export interface EarningsRecord {
   id: string;
-  clientId?: string;
-  applicationId?: string;
+  clientId?: string | undefined;
+  applicationId?: string | undefined;
   projectTitle: string;
   amount: number;
   currency: string;
   receivedAt: string;
-  notes?: string;
+  notes?: string | undefined;
 }
 
 export interface EarningsSummary {

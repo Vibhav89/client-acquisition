@@ -1,4 +1,5 @@
 import type { Opportunity, RiskResult } from "./opportunity.js";
+export type { RiskResult };
 
 const riskTerms = [
   "pay fee",

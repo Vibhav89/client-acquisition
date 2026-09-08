@@ -3,9 +3,9 @@ import type { PersonalAgentProfile } from "../domain/master-profile.js";
 import type { ProfilePersistencePort } from "../domain/profile-persistence.js";
 
 export async function saveMasterProfile(store: ProfilePersistencePort, profile: PersonalAgentProfile, now = new Date().toISOString()): Promise<PersonalAgentProfile> {
-  const normalized = normalizeOnboardingProfile(profile, now);
-  const validation = validateOnboardingProfile(normalized);
+  const validation = validateOnboardingProfile(profile);
   if (!validation.valid) throw new Error(`Invalid master profile: ${validation.missing.join(", ")}`);
+  const normalized = normalizeOnboardingProfile(profile, now);
   await store.saveProfile(normalized);
   return normalized;
 }

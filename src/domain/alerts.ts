@@ -9,8 +9,8 @@ export interface Alert {
   severity: AlertSeverity;
   title: string;
   message: string;
-  actionId?: string;
-  sourceUrl?: string;
+  actionId?: string | undefined;
+  sourceUrl?: string | undefined;
   createdAt: string;
 }
 
