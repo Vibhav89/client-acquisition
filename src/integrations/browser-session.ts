@@ -40,6 +40,7 @@ export class PlaywrightBrowserSession implements BrowserSessionPort {
       .map((anchor) => ({ text: (anchor.textContent ?? "").trim(), href: (anchor as HTMLAnchorElement).href }))
       .filter((link) => link.text && link.href)
       .slice(0, 500));
+    const title = await page.title().catch(() => "");
     const loggedIn = isLikelyLoggedIn(page.url(), text);
 
     return {
@@ -50,7 +51,7 @@ export class PlaywrightBrowserSession implements BrowserSessionPort {
       },
       page: {
         url: page.url(),
-        title: await page.title().catch(() => undefined),
+        ...(title ? { title } : {}),
         text: text.slice(0, 80_000),
         links,
       },
