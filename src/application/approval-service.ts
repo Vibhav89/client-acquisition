@@ -1,6 +1,7 @@
 import { transitionApproval, type ApprovalRequest } from "../domain/approval.js";
 import { draftProposal } from "../domain/proposal.js";
 import type { CandidateProfile } from "../domain/opportunity.js";
+import type { PersonalAgentProfile } from "../domain/master-profile.js";
 import type { RadarResult } from "../domain/radar.js";
 import { sanitizeProposalInput } from "../domain/security.js";
 import type { PersistencePort } from "../domain/persistence.js";
@@ -8,7 +9,7 @@ import type { EventHistoryPort } from "../domain/event-history.js";
 import { createHistoryEvent } from "../domain/event-history.js";
 
 export interface ApprovalService {
-  createForRadar(result: RadarResult, profile: CandidateProfile, now?: string): Promise<ApprovalRequest[]>;
+  createForRadar(result: RadarResult, profile: CandidateProfile | PersonalAgentProfile, now?: string): Promise<ApprovalRequest[]>;
   approve(id: string, now?: string): Promise<ApprovalRequest>;
   reject(id: string, now?: string): Promise<ApprovalRequest>;
 }
@@ -16,7 +17,7 @@ export interface ApprovalService {
 export class DefaultApprovalService implements ApprovalService {
   constructor(private readonly persistence: PersistencePort, private readonly history?: EventHistoryPort) {}
 
-  async createForRadar(result: RadarResult, profile: CandidateProfile, now = new Date().toISOString()): Promise<ApprovalRequest[]> {
+  async createForRadar(result: RadarResult, profile: CandidateProfile | PersonalAgentProfile, now = new Date().toISOString()): Promise<ApprovalRequest[]> {
     const created: ApprovalRequest[] = [];
     const pending = await this.persistence.listPendingApprovals();
     for (const ranked of result.ranked) {
