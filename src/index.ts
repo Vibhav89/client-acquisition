@@ -10,6 +10,8 @@ export * from "./domain/approval.js";
 export * from "./domain/client.js";
 export * from "./domain/client-intelligence.js";
 export * from "./domain/conversation.js";
+export * from "./domain/deal.js";
+export * from "./domain/master-profile.js";
 export * from "./domain/match.js";
 export * from "./domain/normalizer.js";
 export * from "./domain/opportunity.js";
