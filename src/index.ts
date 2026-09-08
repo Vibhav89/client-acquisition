@@ -13,6 +13,7 @@ export * from "./application/history-service.js";
 export * from "./application/follow-up-service.js";
 export * from "./application/negotiation-service.js";
 export * from "./application/profile-service.js";
+export * from "./application/profile-driven-agent.js";
 export * from "./domain/analyze.js";
 export * from "./domain/approval.js";
 export * from "./domain/action-queue.js";
