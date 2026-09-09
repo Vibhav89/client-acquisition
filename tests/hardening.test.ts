@@ -28,10 +28,10 @@ describe("hardening", () => {
     expect(() => transitionApproval(approved, "approved")).toThrow("Invalid approval transition");
   });
 
-  it("rejects orphan approvals in persistence", async () => {
+  it("rejects orphan approvals in persistence", () => {
     const store = new InMemoryPersistence();
     const approval: ApprovalRequest = { id: "a1", opportunityId: "missing", proposal: "Apply", state: "pending", createdAt: "2026-09-08T00:00:00Z" };
-    await expect(store.saveApproval(approval)).rejects.toThrow("Unknown opportunity");
+    expect(() => store.saveApproval(approval)).toThrow("Approval references an unknown opportunity");
   });
 
   it("deduplicates repeated source records deterministically", () => {

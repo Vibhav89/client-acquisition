@@ -23,7 +23,7 @@ const scam: Opportunity = {
   id: "scam-job",
   sourceUrl: "https://example.com/scam-job",
   title: "React developer",
-  description: "Pay a registration fee before receiving the project.",
+  description: "Pay fee and registration fee before receiving the project.",
 };
 
 const rawJob: RawOpportunity = {

@@ -18,11 +18,11 @@ export interface ClientRecord {
   opportunityIds: string[];
   source: string;
   sourceUrl: string;
-  name?: string;
-  country?: string;
-  verified?: boolean;
-  hireRate?: number;
-  totalSpent?: number;
+  name?: string | undefined;
+  country?: string | undefined;
+  verified?: boolean | undefined;
+  hireRate?: number | undefined;
+  totalSpent?: number | undefined;
   stage: ClientStage;
   fitScore: number;
   legitimacyScore: number;
@@ -31,8 +31,8 @@ export interface ClientRecord {
   needs: string[];
   objections: string[];
   approachAngle: string;
-  suggestedPriceUsd?: number;
-  suggestedDeliveryDays?: number;
+  suggestedPriceUsd?: number | undefined;
+  suggestedDeliveryDays?: number | undefined;
   nextAction: string;
   createdAt: string;
   updatedAt: string;
@@ -44,15 +44,15 @@ export interface ConversationMessage {
   direction: "inbound" | "outbound";
   body: string;
   timestamp: string;
-  channel?: string;
+  channel?: string | undefined;
 }
 
 export interface ClientEvent {
   id: string;
   clientId: string;
   type: string;
-  fromStage?: ClientStage;
-  toStage?: ClientStage;
+  fromStage?: ClientStage | undefined;
+  toStage?: ClientStage | undefined;
   summary: string;
   createdAt: string;
 }
@@ -64,8 +64,8 @@ export interface ClientIntelligence {
   needs: string[];
   objections: string[];
   approachAngle: string;
-  suggestedPriceUsd?: number;
-  suggestedDeliveryDays?: number;
+  suggestedPriceUsd?: number | undefined;
+  suggestedDeliveryDays?: number | undefined;
   nextAction: string;
   reasoning: string[];
 }

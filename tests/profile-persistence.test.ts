@@ -4,7 +4,7 @@ import { saveMasterProfile, loadMasterProfile } from "../src/application/profile
 import type { PersonalAgentProfile } from "../src/domain/master-profile.js";
 
 const profile = {
-  displayName: "Vibhav", headline: "AI developer", bio: "Builds tools", skills: ["React"], evidence: ["portfolio"], preferredWorkModes: ["remote"],
+  displayName: "Vibhav", headline: "AI developer", bio: "Builds tools", skills: ["React"], evidence: [{ skill: "React", evidence: "portfolio", strength: 1 }], preferredWorkModes: ["remote"],
   portfolio: [{ title: "Demo", description: "Project", skills: ["React"] }], services: [{ name: "AI integration", description: "APIs", minimumUsd: 25, deliveryDays: 5 }],
   platformAccounts: [{ platform: "Upwork", enabled: true }], communicationStyle: "professional", negotiation: { maxDiscountPercent: 10, requireScopeConfirmation: true, requireFinalApproval: true }, redFlags: [], lastUpdatedAt: "2026-01-01T00:00:00.000Z"
 } as PersonalAgentProfile;

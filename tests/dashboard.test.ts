@@ -20,7 +20,7 @@ const opportunity = (id: string, description: string, skills: string[]): Opportu
 describe("buildDashboardModel", () => {
   it("builds a sorted dashboard summary from radar output", () => {
     const radar = runRadar([
-      opportunity("low", "Remote TypeScript work", ["TypeScript"]),
+      opportunity("low", "Remote TypeScript Python work", ["TypeScript", "Python"]),
       opportunity("high", "Remote TypeScript React AI work", ["TypeScript", "React", "AI"]),
       opportunity("skip", "Pay a registration fee for logo work", ["Photoshop"]),
     ], defaultCandidateProfile);

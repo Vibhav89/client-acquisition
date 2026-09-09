@@ -9,20 +9,20 @@ export interface ActionItem {
   title: string;
   summary: string;
   priority: number;
-  clientId?: string;
-  opportunityId?: string;
-  source?: string;
-  sourceUrl?: string;
+  clientId?: string | undefined;
+  opportunityId?: string | undefined;
+  source?: string | undefined;
+  sourceUrl?: string | undefined;
   requiresUserApproval: boolean;
   createdAt: string;
 }
 
 const stagePriority: Partial<Record<ClientStage, number>> = {
-  final_approval: 100,
+  final_approval: 120,
+  negotiation: 105,
+  conversation: 100,
+  replied: 98,
   interested: 90,
-  negotiation: 85,
-  conversation: 80,
-  replied: 75,
 };
 
 export function buildActionQueue(
@@ -42,7 +42,7 @@ export function buildActionQueue(
       type: "approval",
       title: "Approval required",
       summary: opportunity?.title ?? "Review pending application approval",
-      priority: 110,
+      priority: 85,
       opportunityId: approval.opportunityId,
       source: opportunity?.source,
       sourceUrl: opportunity?.sourceUrl,
@@ -60,7 +60,7 @@ export function buildActionQueue(
       type: client.stage === "final_approval" ? "deal_review" : replyStage ? "reply" : "deal_review",
       title: client.nextAction,
       summary: client.summary,
-      priority: Math.min(109, base + Math.round(client.priorityScore * 0.25)),
+      priority: Math.min(130, base + Math.round(client.priorityScore * 0.05)),
       clientId: client.id,
       source: client.source,
       sourceUrl: client.sourceUrl,
@@ -77,7 +77,7 @@ export function buildActionQueue(
         type: "apply",
         title: "Strong opportunity",
         summary: ranked.opportunity.title,
-        priority: Math.min(79, Math.round(ranked.rankScore)),
+        priority: Math.min(79, 70 + Math.round(ranked.rankScore * 0.09)),
         opportunityId: ranked.opportunity.id,
         source: ranked.opportunity.source,
         sourceUrl: ranked.opportunity.sourceUrl,
@@ -90,7 +90,7 @@ export function buildActionQueue(
         type: "review_opportunity",
         title: "Opportunity review",
         summary: ranked.opportunity.title,
-        priority: Math.min(59, Math.round(ranked.rankScore)),
+        priority: Math.min(59, 40 + Math.round(ranked.rankScore * 0.19)),
         opportunityId: ranked.opportunity.id,
         source: ranked.opportunity.source,
         sourceUrl: ranked.opportunity.sourceUrl,

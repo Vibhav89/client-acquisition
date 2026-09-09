@@ -23,11 +23,32 @@ function workMode(value?: string): WorkMode {
   return "unknown";
 }
 
+const TECH_SKILL_KEYWORDS = [
+  "TypeScript", "JavaScript", "React", "Node.js", "Python", "Golang", "Ruby", "Rails",
+  "Java", "C++", "C#", "PHP", "DevOps", "QA", "Data", "AI", "LLM", "AWS", "Docker",
+  "Kubernetes", "Supabase", "PostgreSQL", "SQL", "GraphQL", "CSS", "HTML", "Vue", "Angular",
+  "Full-Stack", "Frontend", "Backend"
+];
+
+function extractSkills(rawSkills: string[] | undefined, title: string, description: string): string[] {
+  const skillsSet = new Set((rawSkills ?? []).map((s) => s.trim()).filter(Boolean));
+  const text = `${title} ${description}`.toLowerCase();
+  for (const tech of TECH_SKILL_KEYWORDS) {
+    const lower = tech.toLowerCase();
+    if (text.includes(lower) || (lower.includes("-") && text.includes(lower.replace("-", " ")))) {
+      skillsSet.add(tech);
+    }
+  }
+  return [...skillsSet];
+}
+
 export function normalizeOpportunity(raw: RawOpportunity, discoveredAt = new Date().toISOString()): Opportunity {
   if (!raw.source.trim()) throw new Error("source is required");
   if (!raw.url.startsWith("https://") && !raw.url.startsWith("http://")) throw new Error("url must be absolute");
 
-  const skills = [...new Set((raw.skills ?? []).map((skill) => skill.trim()).filter(Boolean))];
+  const title = raw.title?.trim() || "Untitled opportunity";
+  const description = raw.description?.trim() || "";
+  const skills = extractSkills(raw.skills, title, description);
   const budget = raw.currency || raw.min !== undefined || raw.max !== undefined
     ? {
         currency: raw.currency ?? "UNKNOWN",

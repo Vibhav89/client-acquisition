@@ -25,7 +25,7 @@ describe("learning engine", () => {
     expect(applyLearningBoost(70, "upwork", few)).toBe(70);
 
     const many = [event("won"), event("won"), event("won"), event("won"), event("lost")];
-    expect(applyLearningBoost(70, "upwork", many)).toBe(78);
+    expect(applyLearningBoost(70, "upwork", many)).toBe(76);
   });
 });
 

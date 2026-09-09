@@ -1,14 +1,21 @@
 import type { Opportunity, RiskResult } from "./opportunity.js";
+export type { RiskResult };
 
 const riskTerms = [
   "pay fee",
   "registration fee",
   "deposit",
   "crypto payment",
+  "crypto",
+  "bitcoin",
+  "gift card",
   "buy gift card",
   "move to telegram",
+  "telegram",
   "move to whatsapp",
+  "whatsapp",
   "send money",
+  "payment request",
 ];
 
 export function assessRisk(opportunity: Opportunity): RiskResult {

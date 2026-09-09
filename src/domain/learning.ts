@@ -4,25 +4,25 @@ export type Outcome = "won" | "lost" | "rejected" | "ignored";
 
 export interface LearningEvent {
   id: string;
-  clientId?: string;
-  opportunityId?: string;
-  source?: string;
+  clientId?: string | undefined;
+  opportunityId?: string | undefined;
+  source?: string | undefined;
   outcome: Outcome;
-  stage?: ClientStage;
-  reason?: string;
-  matchScore?: number;
-  riskScore?: number;
+  stage?: ClientStage | undefined;
+  reason?: string | undefined;
+  matchScore?: number | undefined;
+  riskScore?: number | undefined;
   createdAt: string;
 }
 
 export interface LearnedSignal {
-  source?: string;
+  source?: string | undefined;
   total: number;
   wins: number;
   losses: number;
   winRate: number;
-  averageMatchScore?: number;
-  averageRiskScore?: number;
+  averageMatchScore?: number | undefined;
+  averageRiskScore?: number | undefined;
 }
 
 export interface LearningPort {

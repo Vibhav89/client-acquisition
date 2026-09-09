@@ -36,7 +36,7 @@ export async function recordSchedulerRun(
     entityType: "scheduler_run",
     entityId: result.finishedAt,
     summary: result.error ? `Scheduler error: ${result.error}` : result.skipped ? "Scheduler run skipped" : "Scheduler run completed",
-    metadata: result,
+    metadata: { ...result },
   }));
 }
 

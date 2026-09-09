@@ -54,7 +54,7 @@ export class InMemoryEventHistory implements EventHistoryPort {
       .filter((event) => !filter.source || event.source === filter.source)
       .filter((event) => !filter.since || event.timestamp >= filter.since)
       .filter((event) => !filter.until || event.timestamp <= filter.until)
-      .sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
+      .sort((a, b) => a.timestamp.localeCompare(b.timestamp));
   }
 }
 
