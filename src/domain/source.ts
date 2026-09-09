@@ -1,5 +1,8 @@
 import type { Opportunity } from "./opportunity.js";
 import { normalizeOpportunity, type RawOpportunity } from "./normalizer.js";
+import { deduplicateOpportunities } from "./dedup.js";
+
+export { deduplicateOpportunities } from "./dedup.js";
 
 export interface OpportunitySource {
   readonly name: string;
@@ -24,14 +27,4 @@ export async function collectFromSources(sources: readonly OpportunitySource[]):
   });
 
   return deduplicateOpportunities(opportunities);
-}
-
-export function deduplicateOpportunities(opportunities: readonly Opportunity[]): Opportunity[] {
-  const seen = new Set<string>();
-  return opportunities.filter((opportunity) => {
-    const key = `${opportunity.source}|${opportunity.sourceUrl}`.toLowerCase();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
 }

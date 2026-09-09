@@ -7,9 +7,12 @@ create table if not exists public.profiles (
   evidence jsonb not null default '[]'::jsonb,
   preferred_work_modes text[] not null default '{}',
   minimum_hourly_usd numeric(12,2),
+  minimum_fixed_usd numeric(12,2),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table public.profiles add column if not exists minimum_fixed_usd numeric(12,2);
 
 create table if not exists public.opportunities (
   id text primary key,
@@ -60,6 +63,11 @@ alter table public.profiles enable row level security;
 alter table public.opportunities enable row level security;
 alter table public.proposals enable row level security;
 alter table public.approval_requests enable row level security;
+
+drop policy if exists "profiles_owner_all" on public.profiles;
+drop policy if exists "opportunities_owner_all" on public.opportunities;
+drop policy if exists "proposals_owner_all" on public.proposals;
+drop policy if exists "approvals_owner_all" on public.approval_requests;
 
 create policy "profiles_owner_all" on public.profiles
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
