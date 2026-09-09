@@ -4,6 +4,7 @@ import type { ClientRecord, ConversationMessage } from "./client.js";
 import type { DealApproval } from "./deal.js";
 import type { ApplicationRecord } from "./application-tracking.js";
 import type { EarningsRecord } from "./earnings.js";
+import type { DocumentRecord } from "./document.js";
 
 export interface PersistencePort {
   saveOpportunity(opportunity: Opportunity): void | Promise<void>;
@@ -28,6 +29,10 @@ export interface PersistencePort {
   listHistoryEvents?(filter?: any): any[] | Promise<any[]>;
   saveLearningEvent?(event: any): void | Promise<void>;
   listLearningEvents?(): any[] | Promise<any[]>;
+  saveDocument?(document: DocumentRecord): void | Promise<void>;
+  getDocument?(id: string): DocumentRecord | undefined | Promise<DocumentRecord | undefined>;
+  listDocuments?(): DocumentRecord[] | Promise<DocumentRecord[]>;
+  deleteDocument?(id: string): void | Promise<void>;
 }
 
 export class InMemoryPersistence implements PersistencePort {
@@ -40,6 +45,9 @@ export class InMemoryPersistence implements PersistencePort {
   private readonly earnings = new Map<string, EarningsRecord>();
   private readonly historyEvents = new Map<string, any>();
   private readonly learningEvents = new Map<string, any>();
+  private readonly documents = new Map<string, DocumentRecord>();
+
+  constructor(public readonly userId: string = "dev-user") {}
 
   saveOpportunity(opportunity: Opportunity): void { this.opportunities.set(opportunity.id, opportunity); }
   saveApproval(request: ApprovalRequest): void {
@@ -81,4 +89,25 @@ export class InMemoryPersistence implements PersistencePort {
 
   saveLearningEvent(event: any): void { this.learningEvents.set(event.id, structuredClone(event)); }
   listLearningEvents(): any[] { return [...this.learningEvents.values()].map((e) => structuredClone(e)); }
+
+  saveDocument(document: DocumentRecord): void {
+    if (document.userId && document.userId !== this.userId) throw new Error("Access denied: Cannot save document for another user");
+    this.documents.set(document.id, structuredClone({ ...document, userId: this.userId }));
+  }
+  getDocument(id: string): DocumentRecord | undefined {
+    const doc = this.documents.get(id);
+    if (!doc || doc.userId !== this.userId) return undefined;
+    return structuredClone(doc);
+  }
+  listDocuments(): DocumentRecord[] {
+    return [...this.documents.values()]
+      .filter((d) => d.userId === this.userId)
+      .map((d) => structuredClone(d));
+  }
+  deleteDocument(id: string): void {
+    const doc = this.documents.get(id);
+    if (doc && doc.userId === this.userId) {
+      this.documents.delete(id);
+    }
+  }
 }

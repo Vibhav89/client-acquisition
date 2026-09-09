@@ -56,3 +56,6 @@ export * from "./integrations/supabase-event-history.js";
 export * from "./integrations/remoteok-source.js";
 export * from "./integrations/remotive-source.js";
 export * from "./integrations/opportunity-source-adapter.js";
+export * from "./domain/document.js";
+export * from "./application/document-service.js";
+export * from "./application/resume-parser.js";

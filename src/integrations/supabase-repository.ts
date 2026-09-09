@@ -13,6 +13,7 @@ export interface SupabaseClientLike {
   from(table: string): {
     upsert(values: Record<string, unknown> | Record<string, unknown>[], options?: { onConflict?: string }): PromiseLike<{ error: { message: string } | null }>;
     select(columns?: string): QueryBuilder;
+    delete?(): QueryBuilder;
   };
 }
 
@@ -197,6 +198,45 @@ export class SupabasePersistence implements PersistencePort {
       summary: String(row.summary), needs: Array.isArray(row.needs) ? row.needs.map(String) : [], objections: Array.isArray(row.objections) ? row.objections.map(String) : [],
       approachAngle: String(row.approach_angle), ...(typeof row.suggested_price_usd === "number" ? { suggestedPriceUsd: row.suggested_price_usd } : {}),
       ...(typeof row.suggested_delivery_days === "number" ? { suggestedDeliveryDays: row.suggested_delivery_days } : {}), nextAction: String(row.next_action),
+      createdAt: String(row.created_at), updatedAt: String(row.updated_at),
+    };
+  }
+
+  async saveDocument(doc: any): Promise<void> {
+    const { error } = await this.client.from("documents").upsert({
+      id: doc.id, user_id: this.userId, title: doc.title, document_type: doc.documentType,
+      file_name: doc.fileName, file_type: doc.fileType, file_size_bytes: doc.fileSizeBytes,
+      content_text: doc.contentText, skills: doc.skills, target_role: doc.targetRole ?? null,
+      version: doc.version, status: doc.status, metadata: doc.metadata,
+      created_at: doc.createdAt, updated_at: doc.updatedAt,
+    });
+    if (error) throw new Error(`Failed to save document: ${error.message}`);
+  }
+  async getDocument(id: string): Promise<any | undefined> {
+    const { data, error } = await this.client.from("documents").select("*").eq("id", id).eq("user_id", this.userId);
+    if (error) throw new Error(`Failed to read document: ${error.message}`);
+    const row = data?.[0] as Record<string, unknown> | undefined;
+    return row ? this.documentFromRow(row) : undefined;
+  }
+  async listDocuments(): Promise<any[]> {
+    const { data, error } = await this.client.from("documents").select("*").eq("user_id", this.userId).order("created_at", { ascending: false });
+    if (error) throw new Error(`Failed to list documents: ${error.message}`);
+    return (data ?? []).map((row) => this.documentFromRow(row as Record<string, unknown>));
+  }
+  async deleteDocument(id: string): Promise<void> {
+    const builder = this.client.from("documents");
+    if (!builder.delete) return;
+    const { error } = await builder.delete().eq("id", id).eq("user_id", this.userId);
+    if (error) throw new Error(`Failed to delete document: ${error.message}`);
+  }
+
+  private documentFromRow(row: Record<string, unknown>): any {
+    return {
+      id: String(row.id), userId: String(row.user_id), title: String(row.title), documentType: row.document_type as any,
+      fileName: String(row.file_name), fileType: row.file_type as any, fileSizeBytes: Number(row.file_size_bytes),
+      contentText: String(row.content_text), skills: Array.isArray(row.skills) ? row.skills.map(String) : [],
+      ...(typeof row.target_role === "string" ? { targetRole: row.target_role } : {}), version: String(row.version),
+      status: row.status as any, metadata: typeof row.metadata === "object" && row.metadata ? (row.metadata as Record<string, unknown>) : {},
       createdAt: String(row.created_at), updatedAt: String(row.updated_at),
     };
   }
