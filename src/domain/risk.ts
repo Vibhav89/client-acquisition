@@ -6,10 +6,16 @@ const riskTerms = [
   "registration fee",
   "deposit",
   "crypto payment",
+  "crypto",
+  "bitcoin",
+  "gift card",
   "buy gift card",
   "move to telegram",
+  "telegram",
   "move to whatsapp",
+  "whatsapp",
   "send money",
+  "payment request",
 ];
 
 export function assessRisk(opportunity: Opportunity): RiskResult {

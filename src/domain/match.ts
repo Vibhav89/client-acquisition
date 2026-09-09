@@ -18,7 +18,7 @@ export function scoreOpportunity(opportunity: Opportunity, profile: CandidatePro
       .reduce((sum, item) => sum + Math.max(0, Math.min(1, item.strength)), 0) / matchedSkills.length) * 20;
 
   let budgetScore = 0;
-  if (opportunity.budget?.currency.toUpperCase() === "USD") {
+  if (opportunity.budget?.currency && opportunity.budget.currency.toUpperCase() === "USD") {
     const topOfRange = opportunity.budget.max ?? opportunity.budget.min ?? 0;
     const threshold = opportunity.budget.unit === "fixed"
       ? (profile.minimumFixedUsd ?? 0)
