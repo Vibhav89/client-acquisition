@@ -39,14 +39,16 @@ No network can promise "high" income from a low-traffic site. Revenue is driven 
 
 Adsterra's published payout information varies by payment method and country. Confirm the currently available India payout method and threshold inside the publisher dashboard before relying on a payout forecast.
 
-## Privacy and compliance
+## Privacy and consent implementation
 
-Before enabling ads for production:
-- Publish an accurate privacy policy that identifies the ad provider and explains third-party cookies/device identifiers and data sharing based on the provider's current documentation.
-- Provide any consent-management flow required for visitors' jurisdictions (including EEA/UK/Switzerland where applicable).
-- Add the final public privacy-policy URL in the footer and the publisher account.
-- Verify that the site has a working public domain and is reachable without authentication before submitting it for approval.
-- Do not claim legal compliance until the policy and consent implementation have been reviewed.
+A public `/privacy.html` policy and an optional-ad consent choice are included in the application. When ads are enabled and a publisher snippet is configured, the app asks visitors to accept or reject optional ads before rendering either ad iframe. The choice is stored in local browser storage; visitors can reopen Ad preferences from the footer. Rejection leaves the product usable and prevents the ad iframe from loading.
+
+This is a basic first-party preference control, not a certified Consent Management Platform (CMP). Before enabling ads for production:
+- Review the policy against the final hosting, authentication, analytics, AI-provider and Adsterra configurations.
+- Check Adsterra's current cookie/device identifier, data processing, and consent requirements.
+- Add a certified CMP or region-specific consent flow if the ad provider or applicable law requires it (including EEA/UK/Switzerland where relevant).
+- Confirm the final public privacy-policy URL and reachable public domain before publisher review.
+- Do not claim legal compliance until the final configuration and jurisdiction-specific requirements have been reviewed.
 
 ## Rollout checklist
 
