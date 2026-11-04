@@ -27,7 +27,11 @@ import { prepareConversationDecision } from "./domain/conversation.js";
 import { summarizeLearning } from "./domain/learning.js";
 import { createHistoryEvent } from "./domain/event-history.js";
 import { DocumentService } from "./application/document-service.js";
+import { generateAiProposal } from "./application/ai-proposal-service.js";
+import { OpenAiCompatibleProvider, readAiProviderConfig } from "./integrations/ai-provider.js";
+import { sanitizeProposalInput } from "./domain/security.js";
 
+const aiProviderConfig = readAiProviderConfig(); const aiProvider = aiProviderConfig ? new OpenAiCompatibleProvider(aiProviderConfig) : undefined;
 const port = Number(process.env.PORT ?? 8787); const root = fileURLToPath(new URL("../dist", import.meta.url)); const developmentPersistence = new InMemoryPersistence(); const developmentProfilePersistence = new InMemoryProfilePersistence(); const sources = createDefaultPublicSources(); const browserEnabled = process.env.CLIENT_RADAR_BROWSER_ENABLED === "true"; const browserSession = new PlaywrightBrowserSession(); const platformConfigs = createDefaultPlatformConfigs(); const supabaseUrl = process.env.SUPABASE_URL?.trim(); const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim(); const hasSupabaseUrl = Boolean(supabaseUrl); const hasSupabaseKey = Boolean(supabaseAnonKey); const supabaseConfigured = hasSupabaseUrl && hasSupabaseKey; const partialSupabaseConfig = hasSupabaseUrl !== hasSupabaseKey; const productionMode = process.env.NODE_ENV === "production"; const MAX_PROFILE_BODY_BYTES = 1024 * 1024;
 if (partialSupabaseConfig || (productionMode && !supabaseConfigured)) throw new Error("Production requires both SUPABASE_URL and SUPABASE_ANON_KEY; partial configuration is not allowed.");
 const mime: Record<string, string> = { ".html": "text/html; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".css": "text/css; charset=utf-8", ".json": "application/json; charset=utf-8", ".svg": "image/svg+xml", ".png": "image/png", ".ico": "image/x-icon" };
@@ -39,8 +43,27 @@ async function requestContext(req: IncomingMessage): Promise<RequestContext | un
 async function loadProfile(profilePersistence: ProfilePersistencePort): Promise<CandidateProfile | PersonalAgentProfile> { const saved = await profilePersistence.getProfile(); if (saved) return saved; return defaultCandidateProfile; }
 async function loadCandidateProfile(profilePersistence: ProfilePersistencePort): Promise<CandidateProfile> { const profile = await loadProfile(profilePersistence); return "negotiation" in profile ? toCandidateProfile(profile) : profile; }
 
-export async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> { try { const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`); if (url.pathname.startsWith("/api/")) { if (url.pathname === "/api/health" && req.method === "GET") { sendJson(res, 200, { ok: true, service: "client-acquisition", authentication: supabaseConfigured ? "supabase" : "development", browserRadar: browserEnabled }); return; } if (url.pathname === "/api/config" && req.method === "GET") { sendJson(res, 200, { authentication: supabaseConfigured ? "supabase" : "development", browserRadar: browserEnabled, platforms: platformConfigs.map(({ platform, displayName }) => ({ platform, displayName })) }); return; } const context = await requestContext(req); if (!context) { sendJson(res, 401, { error: "Authentication required" }); return; }
+export async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> { try { const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`); if (url.pathname.startsWith("/api/")) { if (url.pathname === "/api/health" && req.method === "GET") { sendJson(res, 200, { ok: true, service: "client-acquisition", authentication: supabaseConfigured ? "supabase" : "development", browserRadar: browserEnabled }); return; } if (url.pathname === "/api/config" && req.method === "GET") { sendJson(res, 200, { authentication: supabaseConfigured ? "supabase" : "development", browserRadar: browserEnabled, aiEnabled: Boolean(aiProvider), platforms: platformConfigs.map(({ platform, displayName }) => ({ platform, displayName })) }); return; } const context = await requestContext(req); if (!context) { sendJson(res, 401, { error: "Authentication required" }); return; }
 
+const aiProposalMatch = url.pathname.match(/^\/api\/ai\/proposals\/([^/]+)$/);
+if (aiProposalMatch && req.method === "POST") {
+  if (!aiProvider) { sendJson(res, 503, { error: "AI is not configured. Set AI_API_KEY and AI_MODEL on the server." }); return; }
+  const opportunityId = decodeURIComponent(aiProposalMatch[1] ?? "");
+  const opportunity = await context.persistence.getOpportunity(opportunityId);
+  if (!opportunity) { sendJson(res, 404, { error: "Opportunity not found" }); return; }
+  const approval = (await context.persistence.listPendingApprovals()).find((item) => item.opportunityId === opportunityId);
+  if (!approval) { sendJson(res, 409, { error: "A pending approval is required before generating an AI proposal." }); return; }
+  try {
+    const profile = await loadProfile(context.profilePersistence);
+    const proposal = await generateAiProposal(aiProvider, opportunity, profile);
+    const updated = { ...approval, proposal: sanitizeProposalInput(`AI-assisted draft\\n\\n${proposal}`) };
+    await context.persistence.saveApproval(updated);
+    sendJson(res, 200, { approval: updated, model: aiProviderConfig?.model });
+  } catch (error) {
+    sendJson(res, 502, { error: error instanceof Error ? error.message : "AI proposal generation failed" });
+  }
+  return;
+}
 if (url.pathname === "/api/documents" && req.method === "GET") { const docs = context.persistence.listDocuments ? await context.persistence.listDocuments() : []; sendJson(res, 200, { documents: docs }); return; }
 if (url.pathname === "/api/documents" && req.method === "POST") { try { const body = (await readJsonBody(req, MAX_PROFILE_BODY_BYTES)) as any; const docService = new DocumentService(context.persistence); const userId = (context.persistence as any).userId ?? "dev-user"; const doc = await docService.uploadDocument(userId, body); sendJson(res, 200, { document: doc }); } catch (error) { sendJson(res, 400, { error: error instanceof Error ? error.message : "Document upload failed" }); } return; }
 if (url.pathname === "/api/profile" && req.method === "GET") { const profile = await context.profilePersistence.getProfile(); sendJson(res, 200, { configured: Boolean(profile), profile: profile ?? null }); return; }
