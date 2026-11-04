@@ -297,6 +297,7 @@ export function App() {
   const [refreshing, setRefreshing] = useState(false);
   const [scanningPlatforms, setScanningPlatforms] = useState(false);
   const [busyApproval, setBusyApproval] = useState(false);
+  const [busyAiProposal, setBusyAiProposal] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -418,6 +419,29 @@ export function App() {
       setError(cause instanceof Error ? cause.message : "Unable to save approval");
     } finally {
       setBusyApproval(false);
+    }
+  }
+
+  async function generateAiDraft(job: Opportunity): Promise<void> {
+    if (!approvalFor(job)) return;
+    setBusyAiProposal(true);
+    setError(null);
+    try {
+      const response = await fetch(`/api/ai/proposals/${encodeURIComponent(job.id)}`, {
+        method: "POST",
+        headers: authHeaders(),
+      });
+      const body = await response.json() as { error?: string };
+      if (response.status === 401) {
+        signOut();
+        throw new Error("Your session expired. Please sign in again.");
+      }
+      if (!response.ok) throw new Error(body.error ?? `AI proposal failed (${response.status})`);
+      await refresh();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Unable to generate AI proposal");
+    } finally {
+      setBusyAiProposal(false);
     }
   }
 
@@ -622,6 +646,7 @@ export function App() {
               <p>{approvalFor(selected)?.proposal ?? selected.analysis?.match.fitReasons.join(" ") ?? selected.description}</p>
             </div>
             <div className="modal-actions">
+              {approvalFor(selected) && <button onClick={() => void generateAiDraft(selected)} disabled={busyAiProposal || busyApproval}>{busyAiProposal ? "Generating…" : "Improve with AI"}</button>}
               <button onClick={() => setSelected(null)}>Keep pending</button>
               {approvalFor(selected) && (
                 <>
