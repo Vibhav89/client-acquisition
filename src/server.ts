@@ -21,6 +21,7 @@ import type { ProfilePersistencePort } from "./domain/profile-persistence.js";
 import type { PersonalAgentProfile } from "./domain/master-profile.js";
 import { toCandidateProfile } from "./domain/master-profile.js";
 import { buildCommandCenterSnapshot } from "./application/command-center.js";
+import { runRadar } from "./domain/radar.js";
 import { transitionApplication } from "./domain/application-tracking.js";
 import { transitionDealApproval } from "./domain/deal.js";
 import { prepareConversationDecision } from "./domain/conversation.js";
@@ -79,15 +80,10 @@ if (url.pathname === "/api/command-center" && req.method === "GET") {
   const deals = context.persistence.listDeals ? await context.persistence.listDeals() : [];
   const earningsList = context.persistence.listEarnings ? await context.persistence.listEarnings() : [];
 
-  const rankedOpportunities = opportunities.map((opp) => ({
-    opportunity: opp,
-    analysis: {
-      match: { opportunityId: opp.id, score: 80, matchedSkills: opp.skills, missingSkills: [], evidenceScore: 20, budgetScore: 20, fitReasons: [] },
-      risk: { level: "low" as const, score: 0, signals: [] },
-      recommendation: "apply" as const,
-    },
-    rankScore: 80,
-  }));
+  // Recalculate match and risk from the user's current profile. Never present
+  // placeholder scores as real analysis in the command center.
+  const candidateProfile = await loadCandidateProfile(context.profilePersistence);
+  const rankedOpportunities = runRadar(opportunities, candidateProfile).ranked;
 
   const commandCenter = buildCommandCenterSnapshot({
     clients,
