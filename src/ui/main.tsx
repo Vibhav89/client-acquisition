@@ -2,7 +2,7 @@ import { createRoot } from "react-dom/client";
 import { useEffect, useMemo, useState } from "react";
 import { authHeaders, clearAccessToken, getAccessToken, getAuthConfig, signInWithPassword, type AuthConfig } from "./auth.js";
 import "./styles.css";
-import { AdSlot } from "./ads.js";
+import { AdSlot, isAdsConfigured } from "./ads.js";
 
 type Opportunity = {
   id: string;
@@ -285,7 +285,36 @@ function DocumentVaultPanel() {
   );
 }
 
-export function App() {
+export function SiteLegalFooter({ onAdPreferences }: { onAdPreferences: () => void }) {
+  return (
+    <footer className="legal-footer">
+      <a href="/privacy.html">Privacy Policy</a>
+      {isAdsConfigured() && <button type="button" onClick={onAdPreferences}>Ad preferences</button>}
+    </footer>
+  );
+}
+
+function AdConsentNotice({ onChoice }: { onChoice: (choice: "accepted" | "rejected") => void }) {
+  if (!isAdsConfigured()) return null;
+  return (
+    <section className="ad-consent" role="dialog" aria-label="Advertising preferences">
+      <div>
+        <strong>Advertising preferences</strong>
+        <p>We use Adsterra Native Banner ads to support this free service. If you accept, the ad provider may use cookies or similar technologies and receive device and browser information. Read our <a href="/privacy.html">Privacy Policy</a>.</p>
+      </div>
+      <div className="ad-consent-actions">
+        <button type="button" onClick={() => onChoice("rejected")}>Reject optional ads</button>
+        <button type="button" className="approve" onClick={() => onChoice("accepted")}>Accept optional ads</button>
+      </div>
+    </section>
+  );
+}
+
+function App() {
+  const [adConsent, setAdConsent] = useState<"accepted" | "rejected" | null>(() => {
+    const saved = window.localStorage.getItem("client-radar-ad-consent");
+    return saved === "accepted" || saved === "rejected" ? saved : null;
+  });
   const [config, setConfig] = useState<AuthConfig | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [profileConfigured, setProfileConfigured] = useState(false);
@@ -301,6 +330,16 @@ export function App() {
   const [busyAiProposal, setBusyAiProposal] = useState(false);
   const [authBusy, setAuthBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  function chooseAdConsent(choice: "accepted" | "rejected"): void {
+    window.localStorage.setItem("client-radar-ad-consent", choice);
+    setAdConsent(choice);
+  }
+
+  function reopenAdPreferences(): void {
+    window.localStorage.removeItem("client-radar-ad-consent");
+    setAdConsent(null);
+  }
 
   useEffect(() => {
     void getAuthConfig()
@@ -452,6 +491,8 @@ export function App() {
         <main>
           {error ? <div className="error" style={{ margin: "2rem auto", maxWidth: 600 }}>{error}</div> : <div className="empty">Loading configuration…</div>}
         </main>
+        <SiteLegalFooter onAdPreferences={reopenAdPreferences} />
+        {adConsent === null && <AdConsentNotice onChoice={chooseAdConsent} />}
       </div>
     );
   }
@@ -472,6 +513,8 @@ export function App() {
             </button>
           </section>
         </main>
+        <SiteLegalFooter onAdPreferences={reopenAdPreferences} />
+        {adConsent === null && <AdConsentNotice onChoice={chooseAdConsent} />}
       </div>
     );
   }
@@ -513,7 +556,7 @@ export function App() {
           </button>
         </div>
 
-        <AdSlot placement="workspace-top" />
+        <AdSlot placement="workspace-top" consentGranted={adConsent === "accepted"} />
 
         {!profileConfigured && (
           <div className="demo-note">Set up your master profile or upload a resume. Matching, proposals, pricing guardrails and future client conversations will use it.</div>
@@ -629,11 +672,13 @@ export function App() {
               {!data && !error && <div className="empty">Loading live opportunities…</div>}
               {data && jobs.length === 0 && <div className="empty">No opportunities match this filter.</div>}
             </section>
-            <AdSlot placement="opportunity-feed-bottom" />
+            <AdSlot placement="opportunity-feed-bottom" consentGranted={adConsent === "accepted"} />
             <p className="demo-note">Approval is always explicit. Approving a proposal does not submit an application or send a message.</p>
           </>
         )}
       </main>
+      <SiteLegalFooter onAdPreferences={reopenAdPreferences} />
+      {adConsent === null && <AdConsentNotice onChoice={chooseAdConsent} />}
 
       {selected && (
         <div className="modal-backdrop" onClick={() => setSelected(null)}>
