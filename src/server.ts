@@ -94,7 +94,7 @@ if (url.pathname === "/api/command-center" && req.method === "GET") {
 
   const byCurrency: Record<string, number> = {};
   for (const item of earningsList) byCurrency[item.currency] = (byCurrency[item.currency] ?? 0) + item.amount;
-  const earningsSummary = { totalReceived: Object.values(byCurrency).reduce((a, b) => a + b, 0), byCurrency, payments: earningsList.length };
+  const earningsSummary = { totalReceived: Object.keys(byCurrency).length === 1 ? Object.values(byCurrency)[0] ?? 0 : null, byCurrency, payments: earningsList.length };
 
   sendJson(res, 200, {
     ...commandCenter,
@@ -287,7 +287,7 @@ if (url.pathname === "/api/earnings" && req.method === "GET") {
   const byCurrency: Record<string, number> = {};
   for (const item of earningsList) byCurrency[item.currency] = (byCurrency[item.currency] ?? 0) + item.amount;
   sendJson(res, 200, {
-    totalReceived: Object.values(byCurrency).reduce((a, b) => a + b, 0),
+    totalReceived: Object.keys(byCurrency).length === 1 ? Object.values(byCurrency)[0] ?? 0 : null,
     byCurrency,
     payments: earningsList.length,
     records: earningsList,
@@ -298,9 +298,11 @@ if (url.pathname === "/api/earnings" && req.method === "GET") {
 if (url.pathname === "/api/earnings" && req.method === "POST") {
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
-    if (!body || typeof body !== "object" || !body.projectTitle || typeof body.amount !== "number" || body.amount <= 0) {
-      throw new Error("Earnings amount must be greater than zero and include projectTitle");
+    if (!body || typeof body !== "object" || typeof body.projectTitle !== "string" || !body.projectTitle.trim() || typeof body.amount !== "number" || !Number.isFinite(body.amount) || body.amount <= 0) {
+      throw new Error("Earnings amount must be a finite number greater than zero and include projectTitle");
     }
+    const currency = String(body.currency ?? "USD").trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) throw new Error("Currency must be a valid 3-letter currency code");
     const now = new Date().toISOString();
     const record = {
       id: body.id ?? `earnings:${now}:${Math.random().toString(36).slice(2, 7)}`,
@@ -308,7 +310,7 @@ if (url.pathname === "/api/earnings" && req.method === "POST") {
       applicationId: body.applicationId,
       projectTitle: body.projectTitle,
       amount: body.amount,
-      currency: (body.currency ?? "USD").toUpperCase(),
+      currency,
       receivedAt: body.receivedAt ?? now,
       notes: body.notes,
     };
