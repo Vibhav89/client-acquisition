@@ -2,6 +2,7 @@ import { createRoot } from "react-dom/client";
 import { useEffect, useMemo, useState } from "react";
 import { authHeaders, clearAccessToken, getAccessToken, getAuthConfig, signInWithPassword, type AuthConfig } from "./auth.js";
 import "./styles.css";
+import { AdSlot } from "./ads.js";
 
 type Opportunity = {
   id: string;
@@ -512,6 +513,8 @@ export function App() {
           </button>
         </div>
 
+        <AdSlot placement="workspace-top" />
+
         {!profileConfigured && (
           <div className="demo-note">Set up your master profile or upload a resume. Matching, proposals, pricing guardrails and future client conversations will use it.</div>
         )}
@@ -626,6 +629,7 @@ export function App() {
               {!data && !error && <div className="empty">Loading live opportunities…</div>}
               {data && jobs.length === 0 && <div className="empty">No opportunities match this filter.</div>}
             </section>
+            <AdSlot placement="opportunity-feed-bottom" />
             <p className="demo-note">Approval is always explicit. Approving a proposal does not submit an application or send a message.</p>
           </>
         )}
