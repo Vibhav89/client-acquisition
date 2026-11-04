@@ -52,6 +52,18 @@ describe("Supabase REST client", () => {
     expect((requestInit?.headers as Record<string, string>).prefer).toBe("return=minimal");
   });
 
+  it("refuses an unscoped delete without making a network request", async () => {
+    let calls = 0;
+    const fetchMock: typeof fetch = async () => {
+      calls += 1;
+      return new Response(null, { status: 204 });
+    };
+    const client = new SupabaseRestClient("https://example.supabase.co", "anon", "token", fetchMock);
+    const result = await client.from("documents").delete!();
+    expect(result.error?.message).toContain("user_id filter");
+    expect(calls).toBe(0);
+  });
+
   it("returns undefined for invalid auth", async () => {
     const fetchMock: typeof fetch = async () => response(401, { error: "invalid token" });
     await expect(getSupabaseAuthUser("https://example.supabase.co", "anon", "bad", fetchMock)).resolves.toBeUndefined();
