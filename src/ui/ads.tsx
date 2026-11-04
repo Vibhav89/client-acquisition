@@ -21,8 +21,12 @@ function decodeAdCode(encoded?: string): string | undefined {
  * The component stays invisible until ads are explicitly enabled and a
  * publisher-provided Native Banner snippet is configured for this slot.
  */
-export function AdSlot({ placement }: { placement: AdPlacement }) {
-  if (import.meta.env.VITE_ADS_ENABLED !== "true") return null;
+export function isAdsConfigured(): boolean {
+  return import.meta.env.VITE_ADS_ENABLED === "true" && Object.values(adCodeByPlacement).some((code) => Boolean(code?.trim()));
+}
+
+export function AdSlot({ placement, consentGranted }: { placement: AdPlacement; consentGranted: boolean }) {
+  if (!consentGranted || import.meta.env.VITE_ADS_ENABLED !== "true") return null;
   const code = decodeAdCode(adCodeByPlacement[placement]);
   if (!code) return null;
 
