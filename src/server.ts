@@ -61,7 +61,7 @@ if (aiProposalMatch && req.method === "POST") {
     await context.persistence.saveApproval(updated);
     sendJson(res, 200, { approval: updated, model: aiProviderConfig?.model });
   } catch (error) {
-    sendJson(res, 502, { error: error instanceof Error ? error.message : "AI proposal generation failed" });
+    sendJson(res, 502, { error: "AI proposal generation failed. Please retry later." });
   }
   return;
 }
@@ -404,7 +404,11 @@ if (url.pathname === "/api/learning" && req.method === "POST") {
     }
     if (body.clientId !== undefined && body.clientId !== null) {
       if (typeof body.clientId !== "string" || !body.clientId.trim()) throw new Error("clientId must be a non-empty string");
-      if (!context.persistence.getClient || !await context.persistence.getClient(body.clientId)) { sendJson(res, 404, { error: "Client not found" }); return; }
+      const linkedClient = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
+      if (!linkedClient) { sendJson(res, 404, { error: "Client not found" }); return; }
+      if (body.opportunityId !== undefined && body.opportunityId !== null && !linkedClient.opportunityIds.includes(body.opportunityId)) {
+        throw new Error("The selected client is not linked to this opportunity");
+      }
     }
     if (body.opportunityId !== undefined && body.opportunityId !== null) {
       if (typeof body.opportunityId !== "string" || !body.opportunityId.trim()) throw new Error("opportunityId must be a non-empty string");
