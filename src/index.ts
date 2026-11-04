@@ -59,3 +59,6 @@ export * from "./integrations/opportunity-source-adapter.js";
 export * from "./domain/document.js";
 export * from "./application/document-service.js";
 export * from "./application/resume-parser.js";
+
+export * from "./application/ai-proposal-service.js";
+export * from "./integrations/ai-provider.js";
