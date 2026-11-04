@@ -47,6 +47,10 @@ export class SupabaseRestClient implements SupabaseClientLike {
             onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
             onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
           ): PromiseLike<TResult1 | TResult2> => {
+            if (!state.filters.some(([column, value]) => column === "user_id" && value.trim().length > 0)) {
+              return Promise.resolve({ data: null, error: { message: "Refusing DELETE without an authenticated user_id filter" } })
+                .then(onfulfilled ?? undefined, onrejected ?? undefined);
+            }
             const response = this.fetchImpl(url(), {
               method: "DELETE",
               headers: { ...headers, prefer: "return=minimal" },
