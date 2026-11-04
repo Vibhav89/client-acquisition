@@ -130,7 +130,16 @@ if (clientDetailMatch && req.method === "GET") {
 if (url.pathname === "/api/clients" && req.method === "POST") {
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
-    if (!body || typeof body !== "object" || !body.id) throw new Error("Client payload must include id");
+    if (!body || typeof body !== "object" || typeof body.id !== "string" || !body.id.trim()) throw new Error("Client payload must include a non-empty id");
+    if (!Array.isArray(body.opportunityIds) || body.opportunityIds.length === 0 || body.opportunityIds.some((id: unknown) => typeof id !== "string" || !id.trim())) {
+      throw new Error("Client payload must include at least one valid opportunityId");
+    }
+    if (typeof body.source !== "string" || !body.source.trim() || typeof body.sourceUrl !== "string" || !body.sourceUrl.trim() || typeof body.summary !== "string" || !body.summary.trim()) {
+      throw new Error("Client payload must include source, sourceUrl, and summary");
+    }
+    for (const opportunityId of body.opportunityIds as string[]) {
+      if (!await context.persistence.getOpportunity(opportunityId)) { sendJson(res, 404, { error: "Opportunity not found" }); return; }
+    }
     if (context.persistence.saveClient) await context.persistence.saveClient(body);
     sendJson(res, 200, body);
   } catch (error) {
@@ -184,8 +193,8 @@ if (url.pathname === "/api/conversations" && req.method === "POST") {
 if (url.pathname === "/api/conversations/assess" && req.method === "POST") {
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
-    if (!body || typeof body !== "object" || !body.clientId || !body.messageText) {
-      throw new Error("Assessment payload must include clientId and messageText");
+    if (!body || typeof body !== "object" || typeof body.clientId !== "string" || !body.clientId.trim() || typeof body.messageText !== "string" || !body.messageText.trim() || body.messageText.length > 20000) {
+      throw new Error("Assessment payload must include clientId and a non-empty messageText of at most 20000 characters");
     }
     const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
     if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
@@ -393,6 +402,16 @@ if (url.pathname === "/api/learning" && req.method === "POST") {
     if (!body || typeof body !== "object" || !body.outcome || !["won", "lost", "rejected", "ignored"].includes(body.outcome)) {
       throw new Error("Learning event payload must include valid outcome (won, lost, rejected, ignored)");
     }
+    if (body.clientId !== undefined && body.clientId !== null) {
+      if (typeof body.clientId !== "string" || !body.clientId.trim()) throw new Error("clientId must be a non-empty string");
+      if (!context.persistence.getClient || !await context.persistence.getClient(body.clientId)) { sendJson(res, 404, { error: "Client not found" }); return; }
+    }
+    if (body.opportunityId !== undefined && body.opportunityId !== null) {
+      if (typeof body.opportunityId !== "string" || !body.opportunityId.trim()) throw new Error("opportunityId must be a non-empty string");
+      if (!await context.persistence.getOpportunity(body.opportunityId)) { sendJson(res, 404, { error: "Opportunity not found" }); return; }
+    }
+    if (body.matchScore !== undefined && (!Number.isFinite(body.matchScore) || body.matchScore < 0 || body.matchScore > 100)) throw new Error("matchScore must be between 0 and 100");
+    if (body.riskScore !== undefined && (!Number.isFinite(body.riskScore) || body.riskScore < 0 || body.riskScore > 100)) throw new Error("riskScore must be between 0 and 100");
     const now = new Date().toISOString();
     const event = {
       id: body.id ?? `learning:${now}:${Math.random().toString(36).slice(2, 7)}`,
