@@ -4,7 +4,7 @@ on:
   push:
     branches: [main, feature/live-api, feature/negotiation-guardrails, feature/completion-client-workflow]
   pull_request:
-    branches: [main, feature/live-api, feature/negotiation-guardrails, feature/completion-client-workflow]
+    branches: [main, feature/live-api, feature/negotiation-guardrails, feature/completion-client-workflow, work/ai-integration-mvp]
 
 jobs:
   quality:
