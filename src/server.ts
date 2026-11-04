@@ -151,6 +151,10 @@ if (url.pathname === "/api/conversations" && req.method === "POST") {
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
     if (!body || typeof body !== "object" || !body.clientId || !body.body) throw new Error("Message payload must include clientId and body");
+    const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
+    if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
+    if (body.direction !== undefined && body.direction !== "inbound" && body.direction !== "outbound") throw new Error("Message direction must be inbound or outbound");
+    if (typeof body.body !== "string" || !body.body.trim() || body.body.length > 20000) throw new Error("Message body must be a non-empty string of at most 20000 characters");
     const now = new Date().toISOString();
     const message = {
       id: body.id ?? `message:${body.clientId}:${now}`,
@@ -161,8 +165,6 @@ if (url.pathname === "/api/conversations" && req.method === "POST") {
       channel: body.channel,
     };
     if (context.persistence.saveMessage) await context.persistence.saveMessage(message);
-
-    const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
     const profile = await loadProfile(context.profilePersistence);
     let decision = undefined;
     if (client && "negotiation" in profile && client.opportunityIds.length > 0) {
@@ -207,7 +209,9 @@ if (url.pathname === "/api/deals" && req.method === "GET") {
 if (url.pathname === "/api/deals" && req.method === "POST") {
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
-    if (!body || typeof body !== "object" || !body.clientId || !body.terms) throw new Error("Deal payload must include clientId and terms");
+    if (!body || typeof body !== "object" || typeof body.clientId !== "string" || !body.clientId || !body.terms || typeof body.terms !== "object" || Array.isArray(body.terms)) throw new Error("Deal payload must include clientId and a terms object");
+    const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
+    if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
     const now = new Date().toISOString();
     const deal = {
       id: body.id ?? `deal:${body.clientId}:${now}`,
@@ -250,12 +254,18 @@ if (url.pathname === "/api/applications" && req.method === "POST") {
     if (!body || typeof body !== "object" || !body.opportunityId) throw new Error("Application payload must include opportunityId");
     const now = new Date().toISOString();
     const opportunity = await context.persistence.getOpportunity(body.opportunityId);
+    if (!opportunity) { sendJson(res, 404, { error: "Opportunity not found" }); return; }
+    if (body.clientId !== undefined && body.clientId !== null) {
+      if (typeof body.clientId !== "string" || !body.clientId) throw new Error("clientId must be a non-empty string");
+      const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
+      if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
+    }
     const application = {
       id: body.id ?? `application:${body.opportunityId}`,
-      clientId: body.clientId,
+      ...(body.clientId ? { clientId: body.clientId } : {}),
       opportunityId: body.opportunityId,
-      source: body.source ?? opportunity?.source ?? "unknown",
-      sourceUrl: body.sourceUrl ?? opportunity?.sourceUrl ?? "https://example.com",
+      source: opportunity.source,
+      sourceUrl: opportunity.sourceUrl,
       status: "draft" as const,
       notes: body.notes,
       createdAt: now,
@@ -303,11 +313,21 @@ if (url.pathname === "/api/earnings" && req.method === "POST") {
     }
     const currency = String(body.currency ?? "USD").trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) throw new Error("Currency must be a valid 3-letter currency code");
+    if (body.clientId !== undefined && body.clientId !== null) {
+      if (typeof body.clientId !== "string" || !body.clientId) throw new Error("clientId must be a non-empty string");
+      const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
+      if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
+    }
+    if (body.applicationId !== undefined && body.applicationId !== null) {
+      if (typeof body.applicationId !== "string" || !body.applicationId) throw new Error("applicationId must be a non-empty string");
+      const application = context.persistence.getApplication ? await context.persistence.getApplication(body.applicationId) : undefined;
+      if (!application) { sendJson(res, 404, { error: "Application not found" }); return; }
+    }
     const now = new Date().toISOString();
     const record = {
       id: body.id ?? `earnings:${now}:${Math.random().toString(36).slice(2, 7)}`,
-      clientId: body.clientId,
-      applicationId: body.applicationId,
+      ...(body.clientId ? { clientId: body.clientId } : {}),
+      ...(body.applicationId ? { applicationId: body.applicationId } : {}),
       projectTitle: body.projectTitle,
       amount: body.amount,
       currency,
