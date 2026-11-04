@@ -71,6 +71,44 @@ describe("HTTP API", () => {
     await expect(earnings.json()).resolves.toEqual({ error: "Client not found" });
   });
 
+  it("rejects clients and learning events linked to unknown opportunities or clients", async () => {
+    const base = await startServer();
+    const headers = { "content-type": "application/json" };
+
+    const client = await fetch(`${base}/api/clients`, {
+      method: "POST", headers,
+      body: JSON.stringify({
+        id: "client-with-missing-opportunity",
+        opportunityIds: ["missing-opportunity"],
+        source: "test",
+        sourceUrl: "https://example.com",
+        summary: "Test client",
+      }),
+    });
+    expect(client.status).toBe(404);
+    await expect(client.json()).resolves.toEqual({ error: "Opportunity not found" });
+
+    const learningClient = await fetch(`${base}/api/learning`, {
+      method: "POST", headers,
+      body: JSON.stringify({ outcome: "won", clientId: "missing-client" }),
+    });
+    expect(learningClient.status).toBe(404);
+    await expect(learningClient.json()).resolves.toEqual({ error: "Client not found" });
+
+    const learningOpportunity = await fetch(`${base}/api/learning`, {
+      method: "POST", headers,
+      body: JSON.stringify({ outcome: "lost", opportunityId: "missing-opportunity" }),
+    });
+    expect(learningOpportunity.status).toBe(404);
+    await expect(learningOpportunity.json()).resolves.toEqual({ error: "Opportunity not found" });
+
+    const invalidScore = await fetch(`${base}/api/learning`, {
+      method: "POST", headers,
+      body: JSON.stringify({ outcome: "won", matchScore: 140 }),
+    });
+    expect(invalidScore.status).toBe(400);
+  });
+
   it("does not expose filesystem paths through traversal attempts", async () => {
     const base = await startServer();
     const response = await fetch(`${base}/../package.json`);
