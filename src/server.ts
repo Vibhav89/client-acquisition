@@ -259,6 +259,7 @@ if (url.pathname === "/api/applications" && req.method === "POST") {
       if (typeof body.clientId !== "string" || !body.clientId) throw new Error("clientId must be a non-empty string");
       const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
       if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
+      if (!client.opportunityIds.includes(body.opportunityId)) throw new Error("The selected client is not linked to this opportunity");
     }
     const application = {
       id: body.id ?? `application:${body.opportunityId}`,
@@ -322,6 +323,7 @@ if (url.pathname === "/api/earnings" && req.method === "POST") {
       if (typeof body.applicationId !== "string" || !body.applicationId) throw new Error("applicationId must be a non-empty string");
       const application = context.persistence.getApplication ? await context.persistence.getApplication(body.applicationId) : undefined;
       if (!application) { sendJson(res, 404, { error: "Application not found" }); return; }
+      if (body.clientId && application.clientId && application.clientId !== body.clientId) throw new Error("The application does not belong to the selected client");
     }
     const now = new Date().toISOString();
     const record = {
