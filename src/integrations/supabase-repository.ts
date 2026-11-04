@@ -9,11 +9,14 @@ interface QueryBuilder extends PromiseLike<QueryResult> {
   eq(column: string, value: string): QueryBuilder;
   order(column: string, options?: { ascending?: boolean }): PromiseLike<QueryResult>;
 }
+interface DeleteBuilder extends PromiseLike<QueryResult> {
+  eq(column: string, value: string): DeleteBuilder;
+}
 export interface SupabaseClientLike {
   from(table: string): {
     upsert(values: Record<string, unknown> | Record<string, unknown>[], options?: { onConflict?: string }): PromiseLike<{ error: { message: string } | null }>;
     select(columns?: string): QueryBuilder;
-    delete?(): QueryBuilder;
+    delete?(): DeleteBuilder;
   };
 }
 
@@ -225,7 +228,7 @@ export class SupabasePersistence implements PersistencePort {
   }
   async deleteDocument(id: string): Promise<void> {
     const builder = this.client.from("documents");
-    if (!builder.delete) return;
+    if (!builder.delete) throw new Error("Document deletion is not supported by the configured persistence client");
     const { error } = await builder.delete().eq("id", id).eq("user_id", this.userId);
     if (error) throw new Error(`Failed to delete document: ${error.message}`);
   }
