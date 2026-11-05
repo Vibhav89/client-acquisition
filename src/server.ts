@@ -30,7 +30,7 @@ import { createHistoryEvent } from "./domain/event-history.js";
 import { DocumentService } from "./application/document-service.js";
 import { generateAiProposal } from "./application/ai-proposal-service.js";
 import { OpenAiCompatibleProvider, readAiProviderConfig } from "./integrations/ai-provider.js";
-import { sanitizeProposalInput } from "./domain/security.js";
+import { sanitizeProposalInput, isSafeExternalUrl } from "./domain/security.js";
 
 const aiProviderConfig = readAiProviderConfig(); const aiProvider = aiProviderConfig ? new OpenAiCompatibleProvider(aiProviderConfig) : undefined;
 const port = Number(process.env.PORT ?? 8787); const root = fileURLToPath(new URL("../dist", import.meta.url)); const developmentPersistence = new InMemoryPersistence(); const developmentProfilePersistence = new InMemoryProfilePersistence(); const sources = createDefaultPublicSources(); const browserEnabled = process.env.CLIENT_RADAR_BROWSER_ENABLED === "true"; const browserSession = new PlaywrightBrowserSession(); const platformConfigs = createDefaultPlatformConfigs(); const supabaseUrl = process.env.SUPABASE_URL?.trim(); const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim(); const hasSupabaseUrl = Boolean(supabaseUrl); const hasSupabaseKey = Boolean(supabaseAnonKey); const supabaseConfigured = hasSupabaseUrl && hasSupabaseKey; const partialSupabaseConfig = hasSupabaseUrl !== hasSupabaseKey; const productionMode = process.env.NODE_ENV === "production"; const MAX_PROFILE_BODY_BYTES = 1024 * 1024;
@@ -134,8 +134,26 @@ if (url.pathname === "/api/clients" && req.method === "POST") {
     if (!Array.isArray(body.opportunityIds) || body.opportunityIds.length === 0 || body.opportunityIds.some((id: unknown) => typeof id !== "string" || !id.trim())) {
       throw new Error("Client payload must include at least one valid opportunityId");
     }
-    if (typeof body.source !== "string" || !body.source.trim() || typeof body.sourceUrl !== "string" || !body.sourceUrl.trim() || typeof body.summary !== "string" || !body.summary.trim()) {
-      throw new Error("Client payload must include source, sourceUrl, and summary");
+    if (typeof body.source !== "string" || !body.source.trim() || body.source.length > 120 || typeof body.sourceUrl !== "string" || !isSafeExternalUrl(body.sourceUrl) || typeof body.summary !== "string" || !body.summary.trim() || body.summary.length > 10000) {
+      throw new Error("Client payload must include a valid source, safe HTTP(S) sourceUrl, and summary of at most 10000 characters");
+    }
+    const stages = ["discovered", "qualified", "approached", "replied", "conversation", "negotiation", "interested", "final_approval", "won", "lost", "work", "payment", "review"];
+    if (body.stage !== undefined && !stages.includes(body.stage)) throw new Error("Invalid client stage");
+    for (const score of ["fitScore", "legitimacyScore", "priorityScore", "hireRate"] as const) {
+      if (body[score] !== undefined && (typeof body[score] !== "number" || !Number.isFinite(body[score]) || body[score] < 0 || body[score] > 100)) throw new Error(`${score} must be a number between 0 and 100`);
+    }
+    for (const amount of ["totalSpent", "suggestedPriceUsd", "suggestedDeliveryDays"] as const) {
+      if (body[amount] !== undefined && (typeof body[amount] !== "number" || !Number.isFinite(body[amount]) || body[amount] < 0)) throw new Error(`${amount} must be a finite non-negative number`);
+    }
+    for (const field of ["name", "country", "approachAngle", "nextAction"] as const) {
+      if (body[field] !== undefined && (typeof body[field] !== "string" || body[field].length > 2000)) throw new Error(`${field} must be a string of at most 2000 characters`);
+    }
+    for (const field of ["needs", "objections"] as const) {
+      if (body[field] !== undefined && (!Array.isArray(body[field]) || body[field].length > 100 || body[field].some((item: unknown) => typeof item !== "string" || item.length > 1000))) throw new Error(`${field} must be an array of at most 100 strings`);
+    }
+    if (body.verified !== undefined && typeof body.verified !== "boolean") throw new Error("verified must be a boolean");
+    for (const field of ["createdAt", "updatedAt"] as const) {
+      if (body[field] !== undefined && (typeof body[field] !== "string" || !Number.isFinite(Date.parse(body[field])))) throw new Error(`${field} must be a valid date`);
     }
     for (const opportunityId of body.opportunityIds as string[]) {
       if (!await context.persistence.getOpportunity(opportunityId)) { sendJson(res, 404, { error: "Opportunity not found" }); return; }
@@ -365,9 +383,15 @@ if (url.pathname === "/api/history" && req.method === "GET") {
 if (url.pathname === "/api/history" && req.method === "POST") {
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
-    if (!body || typeof body !== "object" || !body.type || !body.entityType || !body.entityId || !body.summary) {
-      throw new Error("History event must include type, entityType, entityId, and summary");
+    const allowedTypes = ["radar_run", "opportunity_discovered", "opportunity_scored", "approval_created", "approval_decided", "client_stage_changed", "message_received", "reply_prepared", "deal_reviewed", "alert_created", "scheduler_run", "system_error", "outcome_recorded"];
+    if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.type !== "string" || !allowedTypes.includes(body.type) || typeof body.entityType !== "string" || !body.entityType.trim() || body.entityType.length > 80 || typeof body.entityId !== "string" || !body.entityId.trim() || body.entityId.length > 200 || typeof body.summary !== "string" || !body.summary.trim() || body.summary.length > 4000) {
+      throw new Error("History event must include a supported type, entityType, entityId, and summary within their length limits");
     }
+    if (body.id !== undefined && (typeof body.id !== "string" || !body.id.trim() || body.id.length > 200)) throw new Error("History id must be a non-empty string of at most 200 characters");
+    if (body.source !== undefined && (typeof body.source !== "string" || body.source.length > 120)) throw new Error("History source must be a string of at most 120 characters");
+    if (body.timestamp !== undefined && (typeof body.timestamp !== "string" || !Number.isFinite(Date.parse(body.timestamp)))) throw new Error("History timestamp must be a valid date");
+    if (body.metadata !== undefined && (!body.metadata || typeof body.metadata !== "object" || Array.isArray(body.metadata))) throw new Error("History metadata must be a JSON object");
+    if (body.requiresUserApproval !== undefined && typeof body.requiresUserApproval !== "boolean") throw new Error("requiresUserApproval must be a boolean");
     const now = new Date().toISOString();
     const event = createHistoryEvent({
       id: body.id,
