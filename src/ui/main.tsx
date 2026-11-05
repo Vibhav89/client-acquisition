@@ -473,7 +473,7 @@ function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [data, setData] = useState<ApiData | null>(null);
-  const [activeTab, setActiveTab] = useState<"command_center" | "vault" | "profile">("command_center");
+  const [activeTab, setActiveTab] = useState<"command_center" | "vault" | "profile" | "clients">("command_center");
   const [filter, setFilter] = useState<"all" | "low" | "qualified">("all");
   const [selected, setSelected] = useState<Opportunity | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -706,6 +706,9 @@ function App() {
           <button className={`refresh ${activeTab === "profile" ? "selected" : ""}`} style={{ background: activeTab === "profile" ? "#172033" : "#fff", color: activeTab === "profile" ? "#fff" : "#39445a" }} onClick={() => setActiveTab("profile")}>
             ⚙ Master Profile
           </button>
+          <button className={`refresh ${activeTab === "clients" ? "selected" : ""}`} style={{ background: activeTab === "clients" ? "#172033" : "#fff", color: activeTab === "clients" ? "#fff" : "#39445a" }} onClick={() => setActiveTab("clients")}>
+            ◫ Client Workflows
+          </button>
         </div>
 
         <AdSlot placement="workspace-top" consentGranted={adConsent === "accepted"} />
@@ -722,6 +725,7 @@ function App() {
         {error && <div className="error">{error}</div>}
 
         {activeTab === "vault" && <DocumentVaultPanel />}
+        {activeTab === "clients" && <ClientWorkflowPanel opportunities={data?.opportunities ?? []} />}
 
         {activeTab === "profile" && (
           <ProfilePanel
