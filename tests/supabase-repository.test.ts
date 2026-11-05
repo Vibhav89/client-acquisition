@@ -67,6 +67,21 @@ describe("SupabasePersistence", () => {
     expect(await store.listOpportunities()).toHaveLength(1);
   });
 
+  it("normalizes numeric strings returned by Supabase for client and learning metrics", async () => {
+    const { client } = fakeClient();
+    const store = new SupabasePersistence(client, "user-1");
+    await store.saveClient({
+      id: "client-1", opportunityIds: ["job-1"], source: "test", sourceUrl: "https://example.com/client",
+      hireRate: 75, totalSpent: 1200, stage: "discovered", fitScore: 80, legitimacyScore: 90,
+      priorityScore: 85, summary: "Potential client", needs: [], objections: [], approachAngle: "Relevant work",
+      suggestedPriceUsd: 500, nextAction: "Contact", createdAt: "2026-09-07T00:00:00Z", updatedAt: "2026-09-07T00:00:00Z",
+    });
+    const stored = await store.listClients();
+    expect(stored[0].hireRate).toBe(75);
+    expect(stored[0].totalSpent).toBe(1200);
+    expect(stored[0].suggestedPriceUsd).toBe(500);
+  });
+
   it("persists and filters pending approvals", async () => {
     const { client } = fakeClient();
     const store = new SupabasePersistence(client, "user-1");
