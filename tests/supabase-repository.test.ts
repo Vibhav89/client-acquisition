@@ -68,7 +68,7 @@ describe("SupabasePersistence", () => {
   });
 
   it("normalizes numeric strings returned by Supabase for client and learning metrics", async () => {
-    const { client } = fakeClient();
+    const { client, rows } = fakeClient();
     const store = new SupabasePersistence(client, "user-1");
     await store.saveClient({
       id: "client-1", opportunityIds: ["job-1"], source: "test", sourceUrl: "https://example.com/client",
@@ -76,6 +76,11 @@ describe("SupabasePersistence", () => {
       priorityScore: 85, summary: "Potential client", needs: [], objections: [], approachAngle: "Relevant work",
       suggestedPriceUsd: 500, nextAction: "Contact", createdAt: "2026-09-07T00:00:00Z", updatedAt: "2026-09-07T00:00:00Z",
     });
+    const persisted = rows.find((row) => row.__table === "clients");
+    if (!persisted) throw new Error("Expected persisted client row");
+    persisted.hire_rate = "75.00";
+    persisted.total_spent = "1200.00";
+    persisted.suggested_price_usd = "500.00";
     const stored = await store.listClients();
     expect(stored[0].hireRate).toBe(75);
     expect(stored[0].totalSpent).toBe(1200);
