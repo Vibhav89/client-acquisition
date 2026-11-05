@@ -109,6 +109,37 @@ describe("HTTP API", () => {
     expect(invalidScore.status).toBe(400);
   });
 
+  it("rejects malformed client and history payloads before persistence", async () => {
+    const base = await startServer();
+    const headers = { "content-type": "application/json" };
+
+    const unsafeUrl = await fetch(`${base}/api/clients`, {
+      method: "POST", headers,
+      body: JSON.stringify({ id: "bad-url", opportunityIds: ["opp-1"], source: "test", sourceUrl: "javascript:alert(1)", summary: "Client" }),
+    });
+    expect(unsafeUrl.status).toBe(400);
+    await expect(unsafeUrl.json()).resolves.toMatchObject({ error: expect.stringContaining("safe HTTP(S)") });
+
+    const invalidScore = await fetch(`${base}/api/clients`, {
+      method: "POST", headers,
+      body: JSON.stringify({ id: "bad-score", opportunityIds: ["opp-1"], source: "test", sourceUrl: "https://example.com", summary: "Client", fitScore: 140 }),
+    });
+    expect(invalidScore.status).toBe(400);
+    await expect(invalidScore.json()).resolves.toMatchObject({ error: expect.stringContaining("fitScore") });
+
+    const invalidHistoryType = await fetch(`${base}/api/history`, {
+      method: "POST", headers,
+      body: JSON.stringify({ type: "arbitrary", entityType: "client", entityId: "c1", summary: "Test" }),
+    });
+    expect(invalidHistoryType.status).toBe(400);
+
+    const invalidHistoryMetadata = await fetch(`${base}/api/history`, {
+      method: "POST", headers,
+      body: JSON.stringify({ type: "system_error", entityType: "system", entityId: "server", summary: "Test", metadata: [] }),
+    });
+    expect(invalidHistoryMetadata.status).toBe(400);
+  });
+
   it("does not expose filesystem paths through traversal attempts", async () => {
     const base = await startServer();
     const response = await fetch(`${base}/../package.json`);
