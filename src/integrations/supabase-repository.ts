@@ -9,12 +9,21 @@ interface QueryBuilder extends PromiseLike<QueryResult> {
   eq(column: string, value: string): QueryBuilder;
   order(column: string, options?: { ascending?: boolean }): PromiseLike<QueryResult>;
 }
+interface DeleteBuilder extends PromiseLike<QueryResult> {
+  eq(column: string, value: string): DeleteBuilder;
+}
 export interface SupabaseClientLike {
   from(table: string): {
     upsert(values: Record<string, unknown> | Record<string, unknown>[], options?: { onConflict?: string }): PromiseLike<{ error: { message: string } | null }>;
     select(columns?: string): QueryBuilder;
-    delete?(): QueryBuilder;
+    delete?(): DeleteBuilder;
   };
+}
+
+function optionalFiniteNumber(value: unknown): number | undefined {
+  if (value === null || value === undefined || value === "") return undefined;
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 function opportunityRow(userId: string, opportunity: Opportunity): Record<string, unknown> {
@@ -186,17 +195,17 @@ export class SupabasePersistence implements PersistencePort {
   }
 
   private learningEventFromRow(row: Record<string, unknown>): any {
-    return { id: String(row.id), ...(typeof row.client_id === "string" ? { clientId: row.client_id } : {}), ...(typeof row.opportunity_id === "string" ? { opportunityId: row.opportunity_id } : {}), ...(typeof row.source === "string" ? { source: row.source } : {}), outcome: String(row.outcome), ...(typeof row.stage === "string" ? { stage: row.stage } : {}), ...(typeof row.reason === "string" ? { reason: row.reason } : {}), ...(typeof row.match_score === "number" ? { matchScore: row.match_score } : {}), ...(typeof row.risk_score === "number" ? { riskScore: row.risk_score } : {}), createdAt: String(row.created_at) };
+    return { id: String(row.id), ...(typeof row.client_id === "string" ? { clientId: row.client_id } : {}), ...(typeof row.opportunity_id === "string" ? { opportunityId: row.opportunity_id } : {}), ...(typeof row.source === "string" ? { source: row.source } : {}), outcome: String(row.outcome), ...(typeof row.stage === "string" ? { stage: row.stage } : {}), ...(typeof row.reason === "string" ? { reason: row.reason } : {}), ...(optionalFiniteNumber(row.match_score) === undefined ? {} : { matchScore: optionalFiniteNumber(row.match_score) }), ...(optionalFiniteNumber(row.risk_score) === undefined ? {} : { riskScore: optionalFiniteNumber(row.risk_score) }), createdAt: String(row.created_at) };
   }
 
   private clientFromRow(row: Record<string, unknown>): any {
     return {
       id: String(row.id), opportunityIds: Array.isArray(row.opportunity_ids) ? row.opportunity_ids.map(String) : [], source: String(row.source), sourceUrl: String(row.source_url),
       ...(typeof row.name === "string" ? { name: row.name } : {}), ...(typeof row.country === "string" ? { country: row.country } : {}), ...(typeof row.verified === "boolean" ? { verified: row.verified } : {}),
-      ...(typeof row.hire_rate === "number" ? { hireRate: row.hire_rate } : {}), ...(typeof row.total_spent === "number" ? { totalSpent: row.total_spent } : {}),
+      ...(optionalFiniteNumber(row.hire_rate) === undefined ? {} : { hireRate: optionalFiniteNumber(row.hire_rate) }), ...(optionalFiniteNumber(row.total_spent) === undefined ? {} : { totalSpent: optionalFiniteNumber(row.total_spent) }),
       stage: String(row.stage), fitScore: Number(row.fit_score), legitimacyScore: Number(row.legitimacy_score), priorityScore: Number(row.priority_score),
       summary: String(row.summary), needs: Array.isArray(row.needs) ? row.needs.map(String) : [], objections: Array.isArray(row.objections) ? row.objections.map(String) : [],
-      approachAngle: String(row.approach_angle), ...(typeof row.suggested_price_usd === "number" ? { suggestedPriceUsd: row.suggested_price_usd } : {}),
+      approachAngle: String(row.approach_angle), ...(optionalFiniteNumber(row.suggested_price_usd) === undefined ? {} : { suggestedPriceUsd: optionalFiniteNumber(row.suggested_price_usd) }),
       ...(typeof row.suggested_delivery_days === "number" ? { suggestedDeliveryDays: row.suggested_delivery_days } : {}), nextAction: String(row.next_action),
       createdAt: String(row.created_at), updatedAt: String(row.updated_at),
     };
@@ -209,7 +218,7 @@ export class SupabasePersistence implements PersistencePort {
       content_text: doc.contentText, skills: doc.skills, target_role: doc.targetRole ?? null,
       version: doc.version, status: doc.status, metadata: doc.metadata,
       created_at: doc.createdAt, updated_at: doc.updatedAt,
-    });
+    }, { onConflict: "user_id,id" });
     if (error) throw new Error(`Failed to save document: ${error.message}`);
   }
   async getDocument(id: string): Promise<any | undefined> {
@@ -225,7 +234,7 @@ export class SupabasePersistence implements PersistencePort {
   }
   async deleteDocument(id: string): Promise<void> {
     const builder = this.client.from("documents");
-    if (!builder.delete) return;
+    if (!builder.delete) throw new Error("Document deletion is not supported by the configured persistence client");
     const { error } = await builder.delete().eq("id", id).eq("user_id", this.userId);
     if (error) throw new Error(`Failed to delete document: ${error.message}`);
   }

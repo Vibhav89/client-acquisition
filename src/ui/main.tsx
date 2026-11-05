@@ -285,6 +285,168 @@ function DocumentVaultPanel() {
   );
 }
 
+
+type CrmClient = { id: string; name?: string; source: string; sourceUrl: string; stage: string; opportunityIds: string[]; summary: string };
+type CrmDeal = { id: string; clientId: string; state: string; terms: { scope: string; priceUsd: number; deliveryDays: number } };
+type CrmApplication = { id: string; clientId?: string; opportunityId: string; status: string; source: string };
+type CrmEarning = { id: string; projectTitle: string; amount: number; currency: string; receivedAt: string };
+
+function ClientWorkflowPanel({ opportunities }: { opportunities: Opportunity[] }) {
+  const [clients, setClients] = useState<CrmClient[]>([]);
+  const [messages, setMessages] = useState<any[]>([]);
+  const [deals, setDeals] = useState<CrmDeal[]>([]);
+  const [applications, setApplications] = useState<CrmApplication[]>([]);
+  const [earnings, setEarnings] = useState<CrmEarning[]>([]);
+  const [history, setHistory] = useState<any[]>([]);
+  const [learning, setLearning] = useState<any[]>([]);
+  const [selectedClient, setSelectedClient] = useState("");
+  const [selectedOpportunity, setSelectedOpportunity] = useState("");
+  const [clientName, setClientName] = useState("");
+  const [messageBody, setMessageBody] = useState("");
+  const [dealScope, setDealScope] = useState("");
+  const [dealPrice, setDealPrice] = useState("150");
+  const [dealDays, setDealDays] = useState("7");
+  const [earningTitle, setEarningTitle] = useState("");
+  const [earningAmount, setEarningAmount] = useState("");
+  const [earningCurrency, setEarningCurrency] = useState("USD");
+  const [busy, setBusy] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [failure, setFailure] = useState("");
+
+  async function request(path: string, init?: RequestInit): Promise<any> {
+    const response = await fetch(path, { ...init, headers: { ...authHeaders(), ...(init?.headers ?? {}) } });
+    const body = await response.json().catch(() => ({}));
+    if (response.status === 401) { clearAccessToken(); throw new Error("Session expired. Sign in again."); }
+    if (!response.ok) throw new Error(body.error ?? `Request failed (${response.status})`);
+    return body;
+  }
+
+  async function load(): Promise<void> {
+    const [c, d, a, e, h, l] = await Promise.all([
+      request("/api/clients"), request("/api/deals"), request("/api/applications"),
+      request("/api/earnings"), request("/api/history"), request("/api/learning")
+    ]);
+    setClients(c ?? []); setDeals(d ?? []); setApplications(a ?? []);
+    setEarnings(e.records ?? []); setHistory(h ?? []); setLearning(l.events ?? []);
+    const first = (c ?? [])[0]?.id ?? "";
+    setSelectedClient((current) => current && (c ?? []).some((item: CrmClient) => item.id === current) ? current : first);
+    if (!selectedOpportunity && opportunities[0]) setSelectedOpportunity(opportunities[0].id);
+    if (first) {
+      const conversation = await request(`/api/conversations?clientId=${encodeURIComponent(selectedClient || first)}`);
+      setMessages(conversation ?? []);
+    } else setMessages([]);
+  }
+
+  useEffect(() => { void load().catch((e) => setFailure(e instanceof Error ? e.message : "Unable to load client workflows")); }, []);
+
+  async function perform(action: () => Promise<void>, success: string): Promise<void> {
+    setBusy(true); setFailure(""); setNotice("");
+    try { await action(); await load(); setNotice(success); }
+    catch (e) { setFailure(e instanceof Error ? e.message : "Action failed"); }
+    finally { setBusy(false); }
+  }
+
+  const selected = clients.find((client) => client.id === selectedClient);
+  const selectedJob = opportunities.find((job) => job.id === selectedOpportunity);
+
+  return <section className="panel profile-panel">
+    <div className="panel-head"><div><p className="eyebrow">CLIENT RELATIONSHIP WORKSPACE</p><h2>Client & Revenue Workflows</h2><p className="muted">Track clients, conversations, deal approvals, applications, received payments and learning history. Nothing is sent to an external platform.</p></div><button className="refresh" disabled={busy} onClick={() => void load()}>↻ Refresh records</button></div>
+    {notice && <div className="success" role="status">{notice}</div>}{failure && <div className="error" role="alert">{failure}</div>}
+    <div className="command-grid">
+      <div className="command-card"><h3>Clients</h3><strong>{clients.length}</strong></div>
+      <div className="command-card"><h3>Deals</h3><strong>{deals.length}</strong></div>
+      <div className="command-card"><h3>Applications</h3><strong>{applications.length}</strong></div>
+      <div className="command-card"><h3>Payment records</h3><strong>{earnings.length}</strong></div>
+    </div>
+    <div className="profile-grid">
+      <label>Opportunity for new client
+        <select value={selectedOpportunity} onChange={(e) => setSelectedOpportunity(e.target.value)}>
+          <option value="">Select opportunity</option>{opportunities.map((job) => <option key={job.id} value={job.id}>{job.title}</option>)}
+        </select>
+      </label>
+      <label>Client / contact name<input value={clientName} onChange={(e) => setClientName(e.target.value)} placeholder="Client or company name" /></label>
+    </div>
+    <div style={{padding:"0 22px 18px"}}><button className="approve" disabled={busy || !selectedJob || !clientName.trim()} onClick={() => void perform(async () => {
+      const now = new Date().toISOString();
+      await request("/api/clients", { method:"POST", headers:{"content-type":"application/json"}, body:JSON.stringify({
+        id: `client:${crypto.randomUUID()}`, opportunityIds:[selectedJob!.id], source:selectedJob!.source, sourceUrl:selectedJob!.sourceUrl,
+        name:clientName.trim(), stage:"discovered", fitScore:selectedJob!.analysis?.match.score ?? 0,
+        legitimacyScore:50, priorityScore:selectedJob!.analysis?.match.score ?? 0,
+        summary:`Client tracked from opportunity: ${selectedJob!.title}`, needs:[], objections:[], approachAngle:"Review opportunity and confirm scope.",
+        nextAction:"Review client and decide whether to approach.", createdAt:now, updatedAt:now
+      })});
+      setClientName("");
+    }, "Client added to your private pipeline.")}>Add client to pipeline</button></div>
+
+    <div className="profile-grid">
+      <label>Selected client<select value={selectedClient} onChange={async (e) => { const id=e.target.value; setSelectedClient(id); if(id) { try { setMessages(await request(`/api/conversations?clientId=${encodeURIComponent(id)}`)); } catch(err) { setFailure(err instanceof Error ? err.message : "Unable to load messages"); } } else setMessages([]); }}>
+        <option value="">Select client</option>{clients.map((c) => <option key={c.id} value={c.id}>{c.name || c.id} — {c.stage}</option>)}
+      </select></label>
+      <label>Conversation note / message<textarea rows={3} value={messageBody} onChange={(e) => setMessageBody(e.target.value)} placeholder="Record an inbound message or draft an outbound reply..." /></label>
+    </div>
+    <div style={{padding:"0 22px 18px",display:"flex",gap:8,flexWrap:"wrap"}}>
+      <button disabled={busy || !selectedClient || !messageBody.trim()} onClick={() => void perform(async () => {
+        await request("/api/conversations",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:selectedClient,direction:"inbound",body:messageBody.trim(),channel:"manual-note"})});
+        setMessageBody("");
+      },"Conversation record saved.")}>Save inbound note</button>
+      <button disabled={busy || !selectedClient || !messageBody.trim()} onClick={() => void perform(async () => {
+        await request("/api/conversations",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:selectedClient,direction:"outbound",body:messageBody.trim(),channel:"draft-only"})});
+        setMessageBody("");
+      },"Outbound draft saved internally; it was not sent.")}>Save outbound draft</button>
+    </div>
+    {selected && <div style={{padding:"0 22px 18px"}}><strong>Conversation history — {selected.name || selected.id}</strong>{messages.length ? messages.map((m:any)=><div key={m.id} className="command-card" style={{marginTop:8}}><small>{m.direction} · {m.timestamp}</small><p>{m.body}</p></div>) : <p className="muted">No conversation records yet.</p>}</div>}
+
+    <div className="profile-grid">
+      <label>Deal scope<input value={dealScope} onChange={(e)=>setDealScope(e.target.value)} placeholder="Deliverables and acceptance criteria" /></label>
+      <label>Deal price (USD)<input type="number" min="0" value={dealPrice} onChange={(e)=>setDealPrice(e.target.value)} /></label>
+      <label>Delivery days<input type="number" min="1" value={dealDays} onChange={(e)=>setDealDays(e.target.value)} /></label>
+    </div>
+    <div style={{padding:"0 22px 18px"}}><button disabled={busy || !selectedClient || !dealScope.trim() || Number(dealPrice)<=0 || Number(dealDays)<=0} onClick={()=>void perform(async()=>{
+      await request("/api/deals",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({clientId:selectedClient,terms:{scope:dealScope.trim(),priceUsd:Number(dealPrice),deliveryDays:Number(dealDays),deliverables:[dealScope.trim()],assumptions:[],risks:[]}})});
+      setDealScope("");
+    },"Deal submitted to your final-approval queue.")}>Create deal for approval</button></div>
+    <h3 style={{padding:"0 22px"}}>Deal approval queue</h3>
+    <div style={{padding:"0 22px 18px",display:"grid",gap:8}}>{deals.length===0?<p className="muted">No deals recorded.</p>:deals.map((deal)=><div className="command-card" key={deal.id}><strong>{deal.terms.scope}</strong><p>USD {deal.terms.priceUsd} · {deal.terms.deliveryDays} days · {deal.state}</p><div className="filters">{deal.state==="pending_final_approval" && <><button disabled={busy} onClick={()=>void perform(async()=>{await request(`/api/deals/${encodeURIComponent(deal.id)}/approve`,{method:"POST"});},"Deal approved internally.")}>Approve terms</button><button disabled={busy} onClick={()=>void perform(async()=>{await request(`/api/deals/${encodeURIComponent(deal.id)}/reject`,{method:"POST"});},"Deal rejected.")}>Reject</button></>}</div></div>)}</div>
+
+    <div className="profile-grid">
+      <label>Application opportunity<select value={selectedOpportunity} onChange={(e)=>setSelectedOpportunity(e.target.value)}><option value="">Select opportunity</option>{opportunities.map((job)=><option key={job.id} value={job.id}>{job.title}</option>)}</select></label>
+      <label>Link client (optional)<select value={selectedClient} onChange={(e)=>setSelectedClient(e.target.value)}><option value="">No client link</option>{clients.map((c)=><option key={c.id} value={c.id}>{c.name || c.id}</option>)}</select></label>
+    </div>
+    <div style={{padding:"0 22px 18px"}}><button disabled={busy || !selectedOpportunity} onClick={()=>void perform(async()=>{
+      await request("/api/applications",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({opportunityId:selectedOpportunity,...(selectedClient?{clientId:selectedClient}:{})})});
+    },"Draft application created. No external application was submitted.")}>Create draft application</button></div>
+    <h3 style={{padding:"0 22px"}}>Applications</h3>
+    <div style={{padding:"0 22px 18px",display:"grid",gap:8}}>{applications.length===0?<p className="muted">No applications recorded.</p>:applications.map((app)=><div className="command-card" key={app.id}><strong>{opportunities.find((job)=>job.id===app.opportunityId)?.title || app.opportunityId}</strong><p>{app.source} · {app.status}</p></div>)}</div>
+
+    <div className="profile-grid">
+      <label>Payment project title<input value={earningTitle} onChange={(e)=>setEarningTitle(e.target.value)} placeholder="Project / client payment" /></label>
+      <label>Amount received<input type="number" min="0.01" step="0.01" value={earningAmount} onChange={(e)=>setEarningAmount(e.target.value)} /></label>
+      <label>Currency<select value={earningCurrency} onChange={(e)=>setEarningCurrency(e.target.value)}><option>USD</option><option>INR</option><option>EUR</option><option>GBP</option></select></label>
+    </div>
+    <div style={{padding:"0 22px 18px"}}><button disabled={busy || !earningTitle.trim() || Number(earningAmount)<=0} onClick={()=>void perform(async()=>{
+      await request("/api/earnings",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({projectTitle:earningTitle.trim(),amount:Number(earningAmount),currency:earningCurrency,...(selectedClient?{clientId:selectedClient}:{})})});
+      setEarningTitle("");setEarningAmount("");
+    },"Payment record saved.")}>Record received payment</button></div>
+    <h3 style={{padding:"0 22px"}}>Earnings ledger</h3>
+    <div style={{padding:"0 22px 18px",display:"grid",gap:8}}>{earnings.length===0?<p className="muted">No payment records yet.</p>:earnings.map((item)=><div className="command-card" key={item.id}><strong>{item.projectTitle}</strong><p>{item.currency} {item.amount} · {item.receivedAt}</p></div>)}</div>
+
+    <div className="profile-grid">
+      <label>Record outcome<select id="learning-outcome" defaultValue="won"><option value="won">Won</option><option value="lost">Lost</option><option value="rejected">Rejected</option><option value="ignored">Ignored</option></select></label>
+      <label>Outcome reason<input id="learning-reason" placeholder="What happened and why?" /></label>
+    </div>
+    <div style={{padding:"0 22px 18px"}}><button disabled={busy || (!selectedClient && !selectedOpportunity)} onClick={()=>void perform(async()=>{
+      const outcome=(document.getElementById("learning-outcome") as HTMLSelectElement).value;
+      const reason=(document.getElementById("learning-reason") as HTMLInputElement).value.trim();
+      await request("/api/learning",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({outcome,...(selectedClient?{clientId:selectedClient}:{}),...(selectedOpportunity?{opportunityId:selectedOpportunity}:{}),...(reason?{reason}:{})})});
+      (document.getElementById("learning-reason") as HTMLInputElement).value="";
+    },"Learning outcome saved.")}>Save learning outcome</button></div>
+    <h3 style={{padding:"0 22px"}}>Activity & learning records</h3>
+    <div style={{padding:"0 22px 22px"}}><p className="muted">History events: {history.length} · Learning outcomes: {learning.length}</p>
+      {[...history.slice(0,8)].map((event:any)=><div key={event.id} className="command-card" style={{marginBottom:8}}><small>{event.type} · {event.timestamp}</small><p>{event.summary}</p></div>)}
+    </div>
+  </section>;
+}
+
 export function SiteLegalFooter({ onAdPreferences }: { onAdPreferences: () => void }) {
   return (
     <footer className="legal-footer">
@@ -321,7 +483,7 @@ function App() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [data, setData] = useState<ApiData | null>(null);
-  const [activeTab, setActiveTab] = useState<"command_center" | "vault" | "profile">("command_center");
+  const [activeTab, setActiveTab] = useState<"command_center" | "vault" | "profile" | "clients">("command_center");
   const [filter, setFilter] = useState<"all" | "low" | "qualified">("all");
   const [selected, setSelected] = useState<Opportunity | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -554,6 +716,9 @@ function App() {
           <button className={`refresh ${activeTab === "profile" ? "selected" : ""}`} style={{ background: activeTab === "profile" ? "#172033" : "#fff", color: activeTab === "profile" ? "#fff" : "#39445a" }} onClick={() => setActiveTab("profile")}>
             ⚙ Master Profile
           </button>
+          <button className={`refresh ${activeTab === "clients" ? "selected" : ""}`} style={{ background: activeTab === "clients" ? "#172033" : "#fff", color: activeTab === "clients" ? "#fff" : "#39445a" }} onClick={() => setActiveTab("clients")}>
+            ◫ Client Workflows
+          </button>
         </div>
 
         <AdSlot placement="workspace-top" consentGranted={adConsent === "accepted"} />
@@ -570,6 +735,7 @@ function App() {
         {error && <div className="error">{error}</div>}
 
         {activeTab === "vault" && <DocumentVaultPanel />}
+        {activeTab === "clients" && <ClientWorkflowPanel opportunities={data?.opportunities ?? []} />}
 
         {activeTab === "profile" && (
           <ProfilePanel

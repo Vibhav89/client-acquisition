@@ -35,6 +35,35 @@ describe("Supabase REST client", () => {
     expect((requestInit?.headers as Record<string, string>).apikey).toBe("anon");
   });
 
+  it("deletes only rows matching the supplied user and document filters", async () => {
+    let requestUrl = "";
+    let requestInit: RequestInit | undefined;
+    const fetchMock: typeof fetch = async (input, init) => {
+      requestUrl = String(input);
+      requestInit = init;
+      return new Response(null, { status: 204 });
+    };
+    const client = new SupabaseRestClient("https://example.supabase.co", "anon", "token", fetchMock);
+    const result = await client.from("documents").delete!().eq("id", "doc-1").eq("user_id", "user-123");
+    expect(result.error).toBeNull();
+    expect(requestInit?.method).toBe("DELETE");
+    expect(requestUrl).toContain("id=eq.doc-1");
+    expect(requestUrl).toContain("user_id=eq.user-123");
+    expect((requestInit?.headers as Record<string, string>).prefer).toBe("return=minimal");
+  });
+
+  it("refuses an unscoped delete without making a network request", async () => {
+    let calls = 0;
+    const fetchMock: typeof fetch = async () => {
+      calls += 1;
+      return new Response(null, { status: 204 });
+    };
+    const client = new SupabaseRestClient("https://example.supabase.co", "anon", "token", fetchMock);
+    const result = await client.from("documents").delete!();
+    expect(result.error?.message).toContain("user_id filter");
+    expect(calls).toBe(0);
+  });
+
   it("returns undefined for invalid auth", async () => {
     const fetchMock: typeof fetch = async () => response(401, { error: "invalid token" });
     await expect(getSupabaseAuthUser("https://example.supabase.co", "anon", "bad", fetchMock)).resolves.toBeUndefined();

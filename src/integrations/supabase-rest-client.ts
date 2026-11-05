@@ -37,6 +37,31 @@ export class SupabaseRestClient implements SupabaseClientLike {
     };
 
     const tableApi = {
+      delete: () => {
+        const builder = {
+          eq: (column: string, value: string) => {
+            state.filters.push([column, value]);
+            return builder;
+          },
+          then: <TResult1 = QueryResult, TResult2 = never>(
+            onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
+            onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
+          ): PromiseLike<TResult1 | TResult2> => {
+            if (!state.filters.some(([column, value]) => column === "user_id" && value.trim().length > 0)) {
+              return Promise.resolve({ data: null, error: { message: "Refusing DELETE without an authenticated user_id filter" } })
+                .then(onfulfilled ?? undefined, onrejected ?? undefined);
+            }
+            const response = this.fetchImpl(url(), {
+              method: "DELETE",
+              headers: { ...headers, prefer: "return=minimal" },
+            }).then(async (result) => result.ok
+              ? { data: [], error: null }
+              : { data: null, error: { message: await result.text() } });
+            return response.then(onfulfilled ?? undefined, onrejected ?? undefined);
+          },
+        };
+        return builder;
+      },
       upsert: async (values: Record<string, unknown> | Record<string, unknown>[], options?: { onConflict?: string }) => {
         const target = options?.onConflict ? `?on_conflict=${encode(options.onConflict)}` : "";
         const response = await this.fetchImpl(`${base}${target}`, {

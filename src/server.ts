@@ -21,6 +21,7 @@ import type { ProfilePersistencePort } from "./domain/profile-persistence.js";
 import type { PersonalAgentProfile } from "./domain/master-profile.js";
 import { toCandidateProfile } from "./domain/master-profile.js";
 import { buildCommandCenterSnapshot } from "./application/command-center.js";
+import { runRadar } from "./domain/radar.js";
 import { transitionApplication } from "./domain/application-tracking.js";
 import { transitionDealApproval } from "./domain/deal.js";
 import { prepareConversationDecision } from "./domain/conversation.js";
@@ -29,7 +30,7 @@ import { createHistoryEvent } from "./domain/event-history.js";
 import { DocumentService } from "./application/document-service.js";
 import { generateAiProposal } from "./application/ai-proposal-service.js";
 import { OpenAiCompatibleProvider, readAiProviderConfig } from "./integrations/ai-provider.js";
-import { sanitizeProposalInput } from "./domain/security.js";
+import { sanitizeProposalInput, isSafeExternalUrl } from "./domain/security.js";
 
 const aiProviderConfig = readAiProviderConfig(); const aiProvider = aiProviderConfig ? new OpenAiCompatibleProvider(aiProviderConfig) : undefined;
 const port = Number(process.env.PORT ?? 8787); const root = fileURLToPath(new URL("../dist", import.meta.url)); const developmentPersistence = new InMemoryPersistence(); const developmentProfilePersistence = new InMemoryProfilePersistence(); const sources = createDefaultPublicSources(); const browserEnabled = process.env.CLIENT_RADAR_BROWSER_ENABLED === "true"; const browserSession = new PlaywrightBrowserSession(); const platformConfigs = createDefaultPlatformConfigs(); const supabaseUrl = process.env.SUPABASE_URL?.trim(); const supabaseAnonKey = process.env.SUPABASE_ANON_KEY?.trim(); const hasSupabaseUrl = Boolean(supabaseUrl); const hasSupabaseKey = Boolean(supabaseAnonKey); const supabaseConfigured = hasSupabaseUrl && hasSupabaseKey; const partialSupabaseConfig = hasSupabaseUrl !== hasSupabaseKey; const productionMode = process.env.NODE_ENV === "production"; const MAX_PROFILE_BODY_BYTES = 1024 * 1024;
@@ -43,7 +44,7 @@ async function requestContext(req: IncomingMessage): Promise<RequestContext | un
 async function loadProfile(profilePersistence: ProfilePersistencePort): Promise<CandidateProfile | PersonalAgentProfile> { const saved = await profilePersistence.getProfile(); if (saved) return saved; return defaultCandidateProfile; }
 async function loadCandidateProfile(profilePersistence: ProfilePersistencePort): Promise<CandidateProfile> { const profile = await loadProfile(profilePersistence); return "negotiation" in profile ? toCandidateProfile(profile) : profile; }
 
-export async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> { try { const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`); if (url.pathname.startsWith("/api/")) { if (url.pathname === "/api/health" && req.method === "GET") { sendJson(res, 200, { ok: true, service: "client-acquisition", authentication: supabaseConfigured ? "supabase" : "development", browserRadar: browserEnabled }); return; } if (url.pathname === "/api/config" && req.method === "GET") { sendJson(res, 200, { authentication: supabaseConfigured ? "supabase" : "development", browserRadar: browserEnabled, aiEnabled: Boolean(aiProvider), platforms: platformConfigs.map(({ platform, displayName }) => ({ platform, displayName })) }); return; } const context = await requestContext(req); if (!context) { sendJson(res, 401, { error: "Authentication required" }); return; }
+export async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> { try { const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`); if (url.pathname.startsWith("/api/")) { if (url.pathname === "/api/health" && req.method === "GET") { sendJson(res, 200, { ok: true, service: "client-acquisition", authentication: supabaseConfigured ? "supabase" : "development", browserRadar: browserEnabled }); return; } if (url.pathname === "/api/config" && req.method === "GET") { sendJson(res, 200, { authentication: supabaseConfigured ? "supabase" : "development", ...(supabaseConfigured ? { supabaseUrl, supabaseAnonKey } : {}), browserRadar: browserEnabled, aiEnabled: Boolean(aiProvider), platforms: platformConfigs.map(({ platform, displayName }) => ({ platform, displayName })) }); return; } const context = await requestContext(req); if (!context) { sendJson(res, 401, { error: "Authentication required" }); return; }
 
 const aiProposalMatch = url.pathname.match(/^\/api\/ai\/proposals\/([^/]+)$/);
 if (aiProposalMatch && req.method === "POST") {
@@ -60,7 +61,7 @@ if (aiProposalMatch && req.method === "POST") {
     await context.persistence.saveApproval(updated);
     sendJson(res, 200, { approval: updated, model: aiProviderConfig?.model });
   } catch (error) {
-    sendJson(res, 502, { error: error instanceof Error ? error.message : "AI proposal generation failed" });
+    sendJson(res, 502, { error: "AI proposal generation failed. Please retry later." });
   }
   return;
 }
@@ -79,15 +80,10 @@ if (url.pathname === "/api/command-center" && req.method === "GET") {
   const deals = context.persistence.listDeals ? await context.persistence.listDeals() : [];
   const earningsList = context.persistence.listEarnings ? await context.persistence.listEarnings() : [];
 
-  const rankedOpportunities = opportunities.map((opp) => ({
-    opportunity: opp,
-    analysis: {
-      match: { opportunityId: opp.id, score: 80, matchedSkills: opp.skills, missingSkills: [], evidenceScore: 20, budgetScore: 20, fitReasons: [] },
-      risk: { level: "low" as const, score: 0, signals: [] },
-      recommendation: "apply" as const,
-    },
-    rankScore: 80,
-  }));
+  // Recalculate match and risk from the user's current profile. Never present
+  // placeholder scores as real analysis in the command center.
+  const candidateProfile = await loadCandidateProfile(context.profilePersistence);
+  const rankedOpportunities = runRadar(opportunities, candidateProfile).ranked;
 
   const commandCenter = buildCommandCenterSnapshot({
     clients,
@@ -98,7 +94,7 @@ if (url.pathname === "/api/command-center" && req.method === "GET") {
 
   const byCurrency: Record<string, number> = {};
   for (const item of earningsList) byCurrency[item.currency] = (byCurrency[item.currency] ?? 0) + item.amount;
-  const earningsSummary = { totalReceived: Object.values(byCurrency).reduce((a, b) => a + b, 0), byCurrency, payments: earningsList.length };
+  const earningsSummary = { totalReceived: Object.keys(byCurrency).length === 1 ? Object.values(byCurrency)[0] ?? 0 : null, byCurrency, payments: earningsList.length };
 
   sendJson(res, 200, {
     ...commandCenter,
@@ -134,7 +130,34 @@ if (clientDetailMatch && req.method === "GET") {
 if (url.pathname === "/api/clients" && req.method === "POST") {
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
-    if (!body || typeof body !== "object" || !body.id) throw new Error("Client payload must include id");
+    if (!body || typeof body !== "object" || typeof body.id !== "string" || !body.id.trim()) throw new Error("Client payload must include a non-empty id");
+    if (!Array.isArray(body.opportunityIds) || body.opportunityIds.length === 0 || body.opportunityIds.some((id: unknown) => typeof id !== "string" || !id.trim())) {
+      throw new Error("Client payload must include at least one valid opportunityId");
+    }
+    if (typeof body.source !== "string" || !body.source.trim() || body.source.length > 120 || typeof body.sourceUrl !== "string" || !isSafeExternalUrl(body.sourceUrl) || typeof body.summary !== "string" || !body.summary.trim() || body.summary.length > 10000) {
+      throw new Error("Client payload must include a valid source, safe HTTP(S) sourceUrl, and summary of at most 10000 characters");
+    }
+    const stages = ["discovered", "qualified", "approached", "replied", "conversation", "negotiation", "interested", "final_approval", "won", "lost", "work", "payment", "review"];
+    if (body.stage !== undefined && !stages.includes(body.stage)) throw new Error("Invalid client stage");
+    for (const score of ["fitScore", "legitimacyScore", "priorityScore", "hireRate"] as const) {
+      if (body[score] !== undefined && (typeof body[score] !== "number" || !Number.isFinite(body[score]) || body[score] < 0 || body[score] > 100)) throw new Error(`${score} must be a number between 0 and 100`);
+    }
+    for (const amount of ["totalSpent", "suggestedPriceUsd", "suggestedDeliveryDays"] as const) {
+      if (body[amount] !== undefined && (typeof body[amount] !== "number" || !Number.isFinite(body[amount]) || body[amount] < 0)) throw new Error(`${amount} must be a finite non-negative number`);
+    }
+    for (const field of ["name", "country", "approachAngle", "nextAction"] as const) {
+      if (body[field] !== undefined && (typeof body[field] !== "string" || body[field].length > 2000)) throw new Error(`${field} must be a string of at most 2000 characters`);
+    }
+    for (const field of ["needs", "objections"] as const) {
+      if (body[field] !== undefined && (!Array.isArray(body[field]) || body[field].length > 100 || body[field].some((item: unknown) => typeof item !== "string" || item.length > 1000))) throw new Error(`${field} must be an array of at most 100 strings`);
+    }
+    if (body.verified !== undefined && typeof body.verified !== "boolean") throw new Error("verified must be a boolean");
+    for (const field of ["createdAt", "updatedAt"] as const) {
+      if (body[field] !== undefined && (typeof body[field] !== "string" || !Number.isFinite(Date.parse(body[field])))) throw new Error(`${field} must be a valid date`);
+    }
+    for (const opportunityId of body.opportunityIds as string[]) {
+      if (!await context.persistence.getOpportunity(opportunityId)) { sendJson(res, 404, { error: "Opportunity not found" }); return; }
+    }
     if (context.persistence.saveClient) await context.persistence.saveClient(body);
     sendJson(res, 200, body);
   } catch (error) {
@@ -155,6 +178,10 @@ if (url.pathname === "/api/conversations" && req.method === "POST") {
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
     if (!body || typeof body !== "object" || !body.clientId || !body.body) throw new Error("Message payload must include clientId and body");
+    const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
+    if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
+    if (body.direction !== undefined && body.direction !== "inbound" && body.direction !== "outbound") throw new Error("Message direction must be inbound or outbound");
+    if (typeof body.body !== "string" || !body.body.trim() || body.body.length > 20000) throw new Error("Message body must be a non-empty string of at most 20000 characters");
     const now = new Date().toISOString();
     const message = {
       id: body.id ?? `message:${body.clientId}:${now}`,
@@ -165,8 +192,6 @@ if (url.pathname === "/api/conversations" && req.method === "POST") {
       channel: body.channel,
     };
     if (context.persistence.saveMessage) await context.persistence.saveMessage(message);
-
-    const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
     const profile = await loadProfile(context.profilePersistence);
     let decision = undefined;
     if (client && "negotiation" in profile && client.opportunityIds.length > 0) {
@@ -186,8 +211,8 @@ if (url.pathname === "/api/conversations" && req.method === "POST") {
 if (url.pathname === "/api/conversations/assess" && req.method === "POST") {
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
-    if (!body || typeof body !== "object" || !body.clientId || !body.messageText) {
-      throw new Error("Assessment payload must include clientId and messageText");
+    if (!body || typeof body !== "object" || typeof body.clientId !== "string" || !body.clientId.trim() || typeof body.messageText !== "string" || !body.messageText.trim() || body.messageText.length > 20000) {
+      throw new Error("Assessment payload must include clientId and a non-empty messageText of at most 20000 characters");
     }
     const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
     if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
@@ -211,7 +236,9 @@ if (url.pathname === "/api/deals" && req.method === "GET") {
 if (url.pathname === "/api/deals" && req.method === "POST") {
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
-    if (!body || typeof body !== "object" || !body.clientId || !body.terms) throw new Error("Deal payload must include clientId and terms");
+    if (!body || typeof body !== "object" || typeof body.clientId !== "string" || !body.clientId || !body.terms || typeof body.terms !== "object" || Array.isArray(body.terms)) throw new Error("Deal payload must include clientId and a terms object");
+    const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
+    if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
     const now = new Date().toISOString();
     const deal = {
       id: body.id ?? `deal:${body.clientId}:${now}`,
@@ -254,12 +281,19 @@ if (url.pathname === "/api/applications" && req.method === "POST") {
     if (!body || typeof body !== "object" || !body.opportunityId) throw new Error("Application payload must include opportunityId");
     const now = new Date().toISOString();
     const opportunity = await context.persistence.getOpportunity(body.opportunityId);
+    if (!opportunity) { sendJson(res, 404, { error: "Opportunity not found" }); return; }
+    if (body.clientId !== undefined && body.clientId !== null) {
+      if (typeof body.clientId !== "string" || !body.clientId) throw new Error("clientId must be a non-empty string");
+      const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
+      if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
+      if (!client.opportunityIds.includes(body.opportunityId)) throw new Error("The selected client is not linked to this opportunity");
+    }
     const application = {
       id: body.id ?? `application:${body.opportunityId}`,
-      clientId: body.clientId,
+      ...(body.clientId ? { clientId: body.clientId } : {}),
       opportunityId: body.opportunityId,
-      source: body.source ?? opportunity?.source ?? "unknown",
-      sourceUrl: body.sourceUrl ?? opportunity?.sourceUrl ?? "https://example.com",
+      source: opportunity.source,
+      sourceUrl: opportunity.sourceUrl,
       status: "draft" as const,
       notes: body.notes,
       createdAt: now,
@@ -291,7 +325,7 @@ if (url.pathname === "/api/earnings" && req.method === "GET") {
   const byCurrency: Record<string, number> = {};
   for (const item of earningsList) byCurrency[item.currency] = (byCurrency[item.currency] ?? 0) + item.amount;
   sendJson(res, 200, {
-    totalReceived: Object.values(byCurrency).reduce((a, b) => a + b, 0),
+    totalReceived: Object.keys(byCurrency).length === 1 ? Object.values(byCurrency)[0] ?? 0 : null,
     byCurrency,
     payments: earningsList.length,
     records: earningsList,
@@ -302,17 +336,30 @@ if (url.pathname === "/api/earnings" && req.method === "GET") {
 if (url.pathname === "/api/earnings" && req.method === "POST") {
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
-    if (!body || typeof body !== "object" || !body.projectTitle || typeof body.amount !== "number" || body.amount <= 0) {
-      throw new Error("Earnings amount must be greater than zero and include projectTitle");
+    if (!body || typeof body !== "object" || typeof body.projectTitle !== "string" || !body.projectTitle.trim() || typeof body.amount !== "number" || !Number.isFinite(body.amount) || body.amount <= 0) {
+      throw new Error("Earnings amount must be a finite number greater than zero and include projectTitle");
+    }
+    const currency = String(body.currency ?? "USD").trim().toUpperCase();
+    if (!/^[A-Z]{3}$/.test(currency)) throw new Error("Currency must be a valid 3-letter currency code");
+    if (body.clientId !== undefined && body.clientId !== null) {
+      if (typeof body.clientId !== "string" || !body.clientId) throw new Error("clientId must be a non-empty string");
+      const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
+      if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
+    }
+    if (body.applicationId !== undefined && body.applicationId !== null) {
+      if (typeof body.applicationId !== "string" || !body.applicationId) throw new Error("applicationId must be a non-empty string");
+      const application = context.persistence.getApplication ? await context.persistence.getApplication(body.applicationId) : undefined;
+      if (!application) { sendJson(res, 404, { error: "Application not found" }); return; }
+      if (body.clientId && application.clientId && application.clientId !== body.clientId) throw new Error("The application does not belong to the selected client");
     }
     const now = new Date().toISOString();
     const record = {
       id: body.id ?? `earnings:${now}:${Math.random().toString(36).slice(2, 7)}`,
-      clientId: body.clientId,
-      applicationId: body.applicationId,
+      ...(body.clientId ? { clientId: body.clientId } : {}),
+      ...(body.applicationId ? { applicationId: body.applicationId } : {}),
       projectTitle: body.projectTitle,
       amount: body.amount,
-      currency: (body.currency ?? "USD").toUpperCase(),
+      currency,
       receivedAt: body.receivedAt ?? now,
       notes: body.notes,
     };
@@ -336,9 +383,15 @@ if (url.pathname === "/api/history" && req.method === "GET") {
 if (url.pathname === "/api/history" && req.method === "POST") {
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
-    if (!body || typeof body !== "object" || !body.type || !body.entityType || !body.entityId || !body.summary) {
-      throw new Error("History event must include type, entityType, entityId, and summary");
+    const allowedTypes = ["radar_run", "opportunity_discovered", "opportunity_scored", "approval_created", "approval_decided", "client_stage_changed", "message_received", "reply_prepared", "deal_reviewed", "alert_created", "scheduler_run", "system_error", "outcome_recorded"];
+    if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.type !== "string" || !allowedTypes.includes(body.type) || typeof body.entityType !== "string" || !body.entityType.trim() || body.entityType.length > 80 || typeof body.entityId !== "string" || !body.entityId.trim() || body.entityId.length > 200 || typeof body.summary !== "string" || !body.summary.trim() || body.summary.length > 4000) {
+      throw new Error("History event must include a supported type, entityType, entityId, and summary within their length limits");
     }
+    if (body.id !== undefined && (typeof body.id !== "string" || !body.id.trim() || body.id.length > 200)) throw new Error("History id must be a non-empty string of at most 200 characters");
+    if (body.source !== undefined && (typeof body.source !== "string" || body.source.length > 120)) throw new Error("History source must be a string of at most 120 characters");
+    if (body.timestamp !== undefined && (typeof body.timestamp !== "string" || !Number.isFinite(Date.parse(body.timestamp)))) throw new Error("History timestamp must be a valid date");
+    if (body.metadata !== undefined && (!body.metadata || typeof body.metadata !== "object" || Array.isArray(body.metadata))) throw new Error("History metadata must be a JSON object");
+    if (body.requiresUserApproval !== undefined && typeof body.requiresUserApproval !== "boolean") throw new Error("requiresUserApproval must be a boolean");
     const now = new Date().toISOString();
     const event = createHistoryEvent({
       id: body.id,
@@ -373,6 +426,20 @@ if (url.pathname === "/api/learning" && req.method === "POST") {
     if (!body || typeof body !== "object" || !body.outcome || !["won", "lost", "rejected", "ignored"].includes(body.outcome)) {
       throw new Error("Learning event payload must include valid outcome (won, lost, rejected, ignored)");
     }
+    if (body.clientId !== undefined && body.clientId !== null) {
+      if (typeof body.clientId !== "string" || !body.clientId.trim()) throw new Error("clientId must be a non-empty string");
+      const linkedClient = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
+      if (!linkedClient) { sendJson(res, 404, { error: "Client not found" }); return; }
+      if (body.opportunityId !== undefined && body.opportunityId !== null && !linkedClient.opportunityIds.includes(body.opportunityId)) {
+        throw new Error("The selected client is not linked to this opportunity");
+      }
+    }
+    if (body.opportunityId !== undefined && body.opportunityId !== null) {
+      if (typeof body.opportunityId !== "string" || !body.opportunityId.trim()) throw new Error("opportunityId must be a non-empty string");
+      if (!await context.persistence.getOpportunity(body.opportunityId)) { sendJson(res, 404, { error: "Opportunity not found" }); return; }
+    }
+    if (body.matchScore !== undefined && (!Number.isFinite(body.matchScore) || body.matchScore < 0 || body.matchScore > 100)) throw new Error("matchScore must be between 0 and 100");
+    if (body.riskScore !== undefined && (!Number.isFinite(body.riskScore) || body.riskScore < 0 || body.riskScore > 100)) throw new Error("riskScore must be between 0 and 100");
     const now = new Date().toISOString();
     const event = {
       id: body.id ?? `learning:${now}:${Math.random().toString(36).slice(2, 7)}`,
