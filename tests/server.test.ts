@@ -26,6 +26,16 @@ describe("HTTP API", () => {
     expect(["development", "supabase"]).toContain(value.authentication);
   });
 
+  it("exposes only non-secret public configuration in development mode", async () => {
+    const base = await startServer();
+    const response = await fetch(`${base}/api/config`);
+    expect(response.status).toBe(200);
+    const config = await response.json();
+    expect(config.authentication).toBe("development");
+    expect(config).not.toHaveProperty("supabaseUrl");
+    expect(config).not.toHaveProperty("supabaseAnonKey");
+  });
+
   it("rejects unknown API routes and non-GET static methods", async () => {
     const base = await startServer();
     const missing = await fetch(`${base}/api/does-not-exist`);
