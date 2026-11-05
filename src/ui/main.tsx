@@ -430,6 +430,16 @@ function ClientWorkflowPanel({ opportunities }: { opportunities: Opportunity[] }
     <h3 style={{padding:"0 22px"}}>Earnings ledger</h3>
     <div style={{padding:"0 22px 18px",display:"grid",gap:8}}>{earnings.length===0?<p className="muted">No payment records yet.</p>:earnings.map((item)=><div className="command-card" key={item.id}><strong>{item.projectTitle}</strong><p>{item.currency} {item.amount} · {item.receivedAt}</p></div>)}</div>
 
+    <div className="profile-grid">
+      <label>Record outcome<select id="learning-outcome" defaultValue="won"><option value="won">Won</option><option value="lost">Lost</option><option value="rejected">Rejected</option><option value="ignored">Ignored</option></select></label>
+      <label>Outcome reason<input id="learning-reason" placeholder="What happened and why?" /></label>
+    </div>
+    <div style={{padding:"0 22px 18px"}}><button disabled={busy || (!selectedClient && !selectedOpportunity)} onClick={()=>void perform(async()=>{
+      const outcome=(document.getElementById("learning-outcome") as HTMLSelectElement).value;
+      const reason=(document.getElementById("learning-reason") as HTMLInputElement).value.trim();
+      await request("/api/learning",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({outcome,...(selectedClient?{clientId:selectedClient}:{}),...(selectedOpportunity?{opportunityId:selectedOpportunity}:{}),...(reason?{reason}:{})})});
+      (document.getElementById("learning-reason") as HTMLInputElement).value="";
+    },"Learning outcome saved.")}>Save learning outcome</button></div>
     <h3 style={{padding:"0 22px"}}>Activity & learning records</h3>
     <div style={{padding:"0 22px 22px"}}><p className="muted">History events: {history.length} · Learning outcomes: {learning.length}</p>
       {[...history.slice(0,8)].map((event:any)=><div key={event.id} className="command-card" style={{marginBottom:8}}><small>{event.type} · {event.timestamp}</small><p>{event.summary}</p></div>)}
