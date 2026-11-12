@@ -7,6 +7,12 @@ function encode(value: string): string {
   return encodeURIComponent(value);
 }
 
+interface FilterCriterion {
+  column: string;
+  operator: "eq" | "gte" | "lte";
+  value: string;
+}
+
 export class SupabaseRestClient implements SupabaseClientLike {
   constructor(
     private readonly baseUrl: string,
@@ -16,10 +22,10 @@ export class SupabaseRestClient implements SupabaseClientLike {
   ) {}
 
   from(table: string) {
-    const state: { filters: Array<[string, string]> } = { filters: [] };
+    const state: { filters: FilterCriterion[] } = { filters: [] };
     const base = `${this.baseUrl.replace(/\/$/, "")}/rest/v1/${encode(table)}`;
     const url = () => {
-      const query = state.filters.map(([column, value]) => `${encode(column)}=eq.${encode(value)}`).join("&");
+      const query = state.filters.map((f) => `${encode(f.column)}=${f.operator}.${encode(f.value)}`).join("&");
       return `${base}${query ? `?${query}` : ""}`;
     };
     const headers = {
@@ -40,14 +46,14 @@ export class SupabaseRestClient implements SupabaseClientLike {
       delete: () => {
         const builder = {
           eq: (column: string, value: string) => {
-            state.filters.push([column, value]);
+            state.filters.push({ column, operator: "eq", value });
             return builder;
           },
           then: <TResult1 = QueryResult, TResult2 = never>(
             onfulfilled?: ((value: QueryResult) => TResult1 | PromiseLike<TResult1>) | null,
             onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
           ): PromiseLike<TResult1 | TResult2> => {
-            if (!state.filters.some(([column, value]) => column === "user_id" && value.trim().length > 0)) {
+            if (!state.filters.some((f) => f.column === "user_id" && f.operator === "eq" && f.value.trim().length > 0)) {
               return Promise.resolve({ data: null, error: { message: "Refusing DELETE without an authenticated user_id filter" } })
                 .then(onfulfilled ?? undefined, onrejected ?? undefined);
             }
@@ -74,7 +80,15 @@ export class SupabaseRestClient implements SupabaseClientLike {
       select: (columns = "*") => {
         const builder = {
           eq: (column: string, value: string) => {
-            state.filters.push([column, value]);
+            state.filters.push({ column, operator: "eq", value });
+            return builder;
+          },
+          gte: (column: string, value: string) => {
+            state.filters.push({ column, operator: "gte", value });
+            return builder;
+          },
+          lte: (column: string, value: string) => {
+            state.filters.push({ column, operator: "lte", value });
             return builder;
           },
           order: (column: string, options?: { ascending?: boolean }) => request(columns, { column, ...options }),

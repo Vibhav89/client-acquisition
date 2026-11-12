@@ -21,7 +21,9 @@ export interface SupabaseClientLike {
 }
 
 function optionalFiniteNumber(value: unknown): number | undefined {
-  if (value === null || value === undefined || value === "") return undefined;
+  if (value === null || value === undefined) return undefined;
+  if (typeof value === "string" && !value.trim()) return undefined;
+  if (typeof value === "boolean" || typeof value === "object") return undefined;
   const parsed = typeof value === "number" ? value : Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -44,6 +46,8 @@ export class SupabasePersistence implements PersistencePort {
     if (error) throw new Error(`Failed to save opportunity: ${error.message}`);
   }
   async saveApproval(request: ApprovalRequest): Promise<void> {
+    // Default PK conflict target (`id`) is used because current migrations have no unique index on (user_id, id).
+    // Cross-tenant same-ID coexistence requires a separate DB migration (composite PK/unique index) or tenant-namespaced IDs.
     const { error } = await this.client.from("approval_requests").upsert({ id: request.id, user_id: this.userId, opportunity_id: request.opportunityId, proposal: request.proposal, state: request.state, created_at: request.createdAt, ...(request.decidedAt === undefined ? {} : { decided_at: request.decidedAt }) });
     if (error) throw new Error(`Failed to save approval: ${error.message}`);
   }
@@ -206,7 +210,7 @@ export class SupabasePersistence implements PersistencePort {
       stage: String(row.stage), fitScore: Number(row.fit_score), legitimacyScore: Number(row.legitimacy_score), priorityScore: Number(row.priority_score),
       summary: String(row.summary), needs: Array.isArray(row.needs) ? row.needs.map(String) : [], objections: Array.isArray(row.objections) ? row.objections.map(String) : [],
       approachAngle: String(row.approach_angle), ...(optionalFiniteNumber(row.suggested_price_usd) === undefined ? {} : { suggestedPriceUsd: optionalFiniteNumber(row.suggested_price_usd) }),
-      ...(typeof row.suggested_delivery_days === "number" ? { suggestedDeliveryDays: row.suggested_delivery_days } : {}), nextAction: String(row.next_action),
+      ...(optionalFiniteNumber(row.suggested_delivery_days) === undefined ? {} : { suggestedDeliveryDays: optionalFiniteNumber(row.suggested_delivery_days) }), nextAction: String(row.next_action),
       createdAt: String(row.created_at), updatedAt: String(row.updated_at),
     };
   }
@@ -275,17 +279,4 @@ export class SupabasePersistence implements PersistencePort {
   }
 }
 
-export class SupabaseProfilePersistence implements ProfilePersistencePort {
-  constructor(private readonly client: SupabaseClientLike, private readonly userId: string) {}
-  async saveProfile(profile: PersonalAgentProfile): Promise<void> {
-    const { error } = await this.client.from("profiles").upsert({ user_id: this.userId, display_name: profile.displayName, skills: profile.skills, evidence: profile.evidence, preferred_work_modes: profile.preferredWorkModes, minimum_hourly_usd: profile.negotiation.minimumHourlyUsd ?? null, minimum_fixed_usd: profile.negotiation.minimumFixedUsd ?? null, master_profile: profile, updated_at: profile.lastUpdatedAt }, { onConflict: "user_id" });
-    if (error) throw new Error(`Failed to save master profile: ${error.message}`);
-  }
-  async getProfile(): Promise<PersonalAgentProfile | undefined> {
-    const { data, error } = await this.client.from("profiles").select("master_profile").eq("user_id", this.userId);
-    if (error) throw new Error(`Failed to read master profile: ${error.message}`);
-    const value = (data?.[0] as Record<string, unknown> | undefined)?.master_profile;
-    if (!value || typeof value !== "object") return undefined;
-    return value as PersonalAgentProfile;
-  }
-}
+export { SupabaseProfilePersistence } from "./supabase-profile-repository.js";

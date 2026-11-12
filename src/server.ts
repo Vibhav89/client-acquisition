@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { readFile } from "node:fs/promises";
 import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
-import { DefaultApprovalService } from "./application/approval-service.js";
+import { DefaultApprovalService, InvalidApprovalTransitionError, PendingApprovalNotFoundError } from "./application/approval-service.js";
 import { runClientRadar } from "./application/client-radar.js";
 import { runPlatformRadar } from "./application/platform-radar.js";
 import { saveMasterProfile } from "./application/profile-service.js";
@@ -44,7 +44,7 @@ async function requestContext(req: IncomingMessage): Promise<RequestContext | un
 async function loadProfile(profilePersistence: ProfilePersistencePort): Promise<CandidateProfile | PersonalAgentProfile> { const saved = await profilePersistence.getProfile(); if (saved) return saved; return defaultCandidateProfile; }
 async function loadCandidateProfile(profilePersistence: ProfilePersistencePort): Promise<CandidateProfile> { const profile = await loadProfile(profilePersistence); return "negotiation" in profile ? toCandidateProfile(profile) : profile; }
 
-export async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> { try { const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`); if (url.pathname.startsWith("/api/")) { if (url.pathname === "/api/health" && req.method === "GET") { sendJson(res, 200, { ok: true, service: "client-acquisition", authentication: supabaseConfigured ? "supabase" : "development", browserRadar: browserEnabled }); return; } if (url.pathname === "/api/config" && req.method === "GET") { sendJson(res, 200, { authentication: supabaseConfigured ? "supabase" : "development", ...(supabaseConfigured ? { supabaseUrl, supabaseAnonKey } : {}), browserRadar: browserEnabled, aiEnabled: Boolean(aiProvider), platforms: platformConfigs.map(({ platform, displayName }) => ({ platform, displayName })) }); return; } const context = await requestContext(req); if (!context) { sendJson(res, 401, { error: "Authentication required" }); return; }
+export async function handleRequest(req: IncomingMessage, res: ServerResponse, contextOverride?: Partial<RequestContext>): Promise<void> { try { const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`); if (url.pathname.startsWith("/api/")) { if (url.pathname === "/api/health" && req.method === "GET") { sendJson(res, 200, { ok: true, service: "client-acquisition", authentication: supabaseConfigured ? "supabase" : "development", browserRadar: browserEnabled }); return; } if (url.pathname === "/api/config" && req.method === "GET") { sendJson(res, 200, { authentication: supabaseConfigured ? "supabase" : "development", ...(supabaseConfigured ? { supabaseUrl, supabaseAnonKey } : {}), browserRadar: browserEnabled, aiEnabled: Boolean(aiProvider), platforms: platformConfigs.map(({ platform, displayName }) => ({ platform, displayName })) }); return; } const resolvedContext = await requestContext(req); if (!resolvedContext) { sendJson(res, 401, { error: "Authentication required" }); return; } const context: RequestContext = { persistence: contextOverride?.persistence ?? resolvedContext.persistence, profilePersistence: contextOverride?.profilePersistence ?? resolvedContext.profilePersistence };
 
 const aiProposalMatch = url.pathname.match(/^\/api\/ai\/proposals\/([^/]+)$/);
 if (aiProposalMatch && req.method === "POST") {
@@ -236,7 +236,7 @@ if (url.pathname === "/api/deals" && req.method === "GET") {
 if (url.pathname === "/api/deals" && req.method === "POST") {
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
-    if (!body || typeof body !== "object" || typeof body.clientId !== "string" || !body.clientId || !body.terms || typeof body.terms !== "object" || Array.isArray(body.terms)) throw new Error("Deal payload must include clientId and a terms object");
+    if (!body || typeof body !== "object" || typeof body.clientId !== "string" || !body.clientId || !body.terms || typeof body.terms !== "object" || Array.isArray(body.terms)) throw new Error("Deal payload must include clientId and terms");
     const client = context.persistence.getClient ? await context.persistence.getClient(body.clientId) : undefined;
     if (!client) { sendJson(res, 404, { error: "Client not found" }); return; }
     const now = new Date().toISOString();
@@ -381,6 +381,7 @@ if (url.pathname === "/api/history" && req.method === "GET") {
 }
 
 if (url.pathname === "/api/history" && req.method === "POST") {
+  let event: ReturnType<typeof createHistoryEvent>;
   try {
     const body = await readJsonBody(req, MAX_PROFILE_BODY_BYTES) as any;
     const allowedTypes = ["radar_run", "opportunity_discovered", "opportunity_scored", "approval_created", "approval_decided", "client_stage_changed", "message_received", "reply_prepared", "deal_reviewed", "alert_created", "scheduler_run", "system_error", "outcome_recorded"];
@@ -393,7 +394,7 @@ if (url.pathname === "/api/history" && req.method === "POST") {
     if (body.metadata !== undefined && (!body.metadata || typeof body.metadata !== "object" || Array.isArray(body.metadata))) throw new Error("History metadata must be a JSON object");
     if (body.requiresUserApproval !== undefined && typeof body.requiresUserApproval !== "boolean") throw new Error("requiresUserApproval must be a boolean");
     const now = new Date().toISOString();
-    const event = createHistoryEvent({
+    event = createHistoryEvent({
       id: body.id,
       type: body.type,
       timestamp: body.timestamp ?? now,
@@ -404,10 +405,16 @@ if (url.pathname === "/api/history" && req.method === "POST") {
       metadata: body.metadata,
       requiresUserApproval: body.requiresUserApproval ?? false,
     });
+  } catch (error) {
+    sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid history payload" });
+    return;
+  }
+  try {
     if (context.persistence.saveHistoryEvent) await context.persistence.saveHistoryEvent(event);
     sendJson(res, 200, event);
   } catch (error) {
-    sendJson(res, 400, { error: error instanceof Error ? error.message : "Invalid history payload" });
+    console.error("Unexpected history persistence error:", error);
+    sendJson(res, 500, { error: "Internal server error" });
   }
   return;
 }
@@ -461,7 +468,26 @@ if (url.pathname === "/api/learning" && req.method === "POST") {
   return;
 }
 
-const approvalMatch = url.pathname.match(/^\/api\/approvals\/([^/]+)\/(approve|reject)$/); if (approvalMatch && req.method === "POST") { const id = decodeURIComponent(approvalMatch[1] ?? ""); const action = approvalMatch[2]; const approvalService = new DefaultApprovalService(context.persistence); const request = action === "approve" ? await approvalService.approve(id) : await approvalService.reject(id); sendJson(res, 200, request); return; }
+const approvalMatch = url.pathname.match(/^\/api\/approvals\/([^/]+)\/(approve|reject)$/);
+if (approvalMatch && req.method === "POST") {
+  const id = decodeURIComponent(approvalMatch[1] ?? "");
+  const action = approvalMatch[2];
+  try {
+    const approvalService = new DefaultApprovalService(context.persistence);
+    const request = action === "approve" ? await approvalService.approve(id) : await approvalService.reject(id);
+    sendJson(res, 200, request);
+  } catch (error) {
+    if (error instanceof PendingApprovalNotFoundError) {
+      sendJson(res, 404, { error: "Pending approval not found" });
+    } else if (error instanceof InvalidApprovalTransitionError) {
+      sendJson(res, 400, { error: error.message });
+    } else {
+      console.error("Unexpected approval error:", error);
+      sendJson(res, 500, { error: "Internal server error" });
+    }
+  }
+  return;
+}
 sendJson(res, 404, { error: "API route not found" }); return; }
 if (req.method !== "GET") { sendJson(res, 405, { error: "Method not allowed" }); return; } const requested = url.pathname === "/" ? "/index.html" : url.pathname; const normalized = normalize(requested).replace(/^([.][.][\\/])+/, ""); const safePath = normalized.replace(/^[/\\]+/, ""); const filePath = join(root, safePath); try { const data = await readFile(filePath); res.writeHead(200, { "content-type": mime[extname(filePath)] ?? "application/octet-stream" }); res.end(data); } catch { try { const data = await readFile(join(root, "index.html")); res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end(data); } catch { const fallbackPath = fileURLToPath(new URL("../index.html", import.meta.url)); try { const data = await readFile(fallbackPath); res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end(data); } catch { res.writeHead(200, { "content-type": "text/html; charset=utf-8" }); res.end("<!DOCTYPE html><html><body>Client Acquisition Agent</body></html>"); } } } } catch (error) {
   if (!res.headersSent) sendJson(res, 500, { error: "Internal server error" });
