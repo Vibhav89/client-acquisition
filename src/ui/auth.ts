@@ -14,7 +14,16 @@ function storage(): Storage | undefined {
 
 export async function getAuthConfig(): Promise<AuthConfig> {
   const response = await fetch("/api/config", { cache: "no-store" });
-  if (!response.ok) throw new Error(`Configuration request failed (${response.status})`);
+  if (!response.ok) {
+    let detail = "";
+    try {
+      const body = await response.json() as { error?: unknown };
+      if (typeof body?.error === "string" && body.error) detail = `: ${body.error}`;
+    } catch {
+      // Ignore non-JSON error bodies
+    }
+    throw new Error(`Configuration request failed (${response.status})${detail}`);
+  }
   return await response.json() as AuthConfig;
 }
 

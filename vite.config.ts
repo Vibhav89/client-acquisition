@@ -10,6 +10,16 @@ export default defineConfig({
       "/api": {
         target: apiTarget,
         changeOrigin: true,
+        configure: (proxy) => {
+          proxy.on("error", (_err, _req, res) => {
+            if ("writeHead" in res && !res.headersSent) {
+              res.writeHead(503, { "content-type": "application/json; charset=utf-8" });
+              res.end(JSON.stringify({
+                error: `Backend API server unavailable at ${apiTarget}. Run "npm run server" or "npm start".`,
+              }));
+            }
+          });
+        },
       },
     },
   },
