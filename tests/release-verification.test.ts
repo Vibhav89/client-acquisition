@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { handleRequest } from "../src/server.js";
+import { InMemoryPersistence } from "../src/domain/persistence.js";
 import { SupabasePersistence } from "../src/integrations/supabase-repository.js";
 import { SupabaseProfilePersistence } from "../src/integrations/supabase-profile-repository.js";
 import { validateDealTerms, createDealForFinalApproval } from "../src/application/deal-service.js";
@@ -186,7 +187,7 @@ describe("RELEASE READINESS & VERIFICATION SUITE", () => {
   });
 
   describe("Section 8 & 9: API INPUT HARDENING & ERROR SANITIZATION", () => {
-    async function makeReq(url: string, method: string, body?: string) {
+    async function makeReq(url: string, method: string, body?: string, contextOverride?: Parameters<typeof handleRequest>[2]) {
       let statusCode = 0;
       let responseText = "";
       const req: any = {
@@ -197,7 +198,7 @@ describe("RELEASE READINESS & VERIFICATION SUITE", () => {
         writeHead: (code: number) => { statusCode = code; },
         end: (text: string) => { responseText = text; },
       };
-      await handleRequest(req, res);
+      await handleRequest(req, res, contextOverride);
       return { statusCode, responseText, json: () => JSON.parse(responseText) };
     }
 
@@ -220,10 +221,21 @@ describe("RELEASE READINESS & VERIFICATION SUITE", () => {
     });
 
     it("sanitizes 500 internal server errors without leaking filesystem paths or secrets", async () => {
-      const res = await makeReq("/api/history", "POST", JSON.stringify({ type: "t", entityType: "e", entityId: "i", summary: "s" }));
-      expect(res.statusCode).toBe(200);
+      const failingPersistence = new InMemoryPersistence("test-user");
+      failingPersistence.saveHistoryEvent = async () => {
+        throw new Error("Connection failed at C:\\internal\\secrets\\repo.ts with SUPABASE_SERVICE_KEY=super-secret-value");
+      };
+      const res = await makeReq(
+        "/api/history",
+        "POST",
+        JSON.stringify({ type: "radar_run", entityType: "system", entityId: "scheduler", summary: "Executed radar cycle" }),
+        { persistence: failingPersistence },
+      );
+      expect(res.statusCode).toBe(500);
+      expect(res.json()).toEqual({ error: "Internal server error" });
       expect(res.responseText).not.toContain("C:\\");
       expect(res.responseText).not.toContain("SUPABASE_SERVICE_KEY");
+      expect(res.responseText).not.toContain("super-secret-value");
     });
   });
 

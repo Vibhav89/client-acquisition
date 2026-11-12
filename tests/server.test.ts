@@ -156,4 +156,15 @@ describe("HTTP API", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("text/html");
   });
+
+  it("returns 404 when approving or rejecting non-existent or decided approvals", async () => {
+    const base = await startServer();
+    const approveMissing = await fetch(`${base}/api/approvals/missing-approval-id/approve`, { method: "POST" });
+    expect(approveMissing.status).toBe(404);
+    await expect(approveMissing.json()).resolves.toEqual({ error: "Pending approval not found" });
+
+    const rejectMissing = await fetch(`${base}/api/approvals/missing-approval-id/reject`, { method: "POST" });
+    expect(rejectMissing.status).toBe(404);
+    await expect(rejectMissing.json()).resolves.toEqual({ error: "Pending approval not found" });
+  });
 });

@@ -68,4 +68,23 @@ describe("Supabase REST client", () => {
     const fetchMock: typeof fetch = async () => response(401, { error: "invalid token" });
     await expect(getSupabaseAuthUser("https://example.supabase.co", "anon", "bad", fetchMock)).resolves.toBeUndefined();
   });
+
+  it("builds query parameters with gte and lte range filters", async () => {
+    let requestUrl = "";
+    const fetchMock: typeof fetch = async (input) => {
+      requestUrl = String(input);
+      return response(200, [{ id: "event-1" }]);
+    };
+    const client = new SupabaseRestClient("https://example.supabase.co", "anon", "token", fetchMock);
+    const result = await client.from("event_history").select("*")
+      .eq("user_id", "user-123")
+      .gte("timestamp", "2026-09-01T00:00:00.000Z")
+      .lte("timestamp", "2026-09-10T23:59:59.999Z");
+
+    expect(result.data).toEqual([{ id: "event-1" }]);
+    expect(requestUrl).toContain("user_id=eq.user-123");
+    expect(requestUrl).toContain("timestamp=gte.2026-09-01T00%3A00%3A00.000Z");
+    expect(requestUrl).toContain("timestamp=lte.2026-09-10T23%3A59%3A59.999Z");
+    expect(requestUrl).toContain("select=*");
+  });
 });

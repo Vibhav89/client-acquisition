@@ -87,6 +87,134 @@ describe("SupabasePersistence", () => {
     expect(stored[0].suggestedPriceUsd).toBe(500);
   });
 
+  it("handles valid numbers, numeric strings, zero, and rejects invalid delivery days", async () => {
+    const { client, rows } = fakeClient();
+    const store = new SupabasePersistence(client, "user-1");
+
+    // Case 1: valid numeric string
+    rows.push({
+      __table: "clients",
+      id: "client-numeric-str",
+      user_id: "user-1",
+      opportunity_ids: ["job-1"],
+      source: "test",
+      source_url: "https://example.com/client",
+      stage: "discovered",
+      fit_score: 80,
+      legitimacy_score: 80,
+      priority_score: 80,
+      summary: "Client with numeric string delivery days",
+      needs: [],
+      objections: [],
+      approach_angle: "Approach",
+      suggested_delivery_days: "14",
+      next_action: "Act",
+      created_at: "2026-09-07T00:00:00Z",
+      updated_at: "2026-09-07T00:00:00Z",
+    });
+
+    // Case 2: numeric zero
+    rows.push({
+      __table: "clients",
+      id: "client-zero",
+      user_id: "user-1",
+      opportunity_ids: ["job-1"],
+      source: "test",
+      source_url: "https://example.com/client",
+      stage: "discovered",
+      fit_score: 80,
+      legitimacy_score: 80,
+      priority_score: 80,
+      summary: "Client with zero delivery days",
+      needs: [],
+      objections: [],
+      approach_angle: "Approach",
+      suggested_delivery_days: 0,
+      next_action: "Act",
+      created_at: "2026-09-07T00:00:00Z",
+      updated_at: "2026-09-07T00:00:00Z",
+    });
+
+    // Case 3: string zero "0"
+    rows.push({
+      __table: "clients",
+      id: "client-str-zero",
+      user_id: "user-1",
+      opportunity_ids: ["job-1"],
+      source: "test",
+      source_url: "https://example.com/client",
+      stage: "discovered",
+      fit_score: 80,
+      legitimacy_score: 80,
+      priority_score: 80,
+      summary: "Client with string zero delivery days",
+      needs: [],
+      objections: [],
+      approach_angle: "Approach",
+      suggested_delivery_days: "0",
+      next_action: "Act",
+      created_at: "2026-09-07T00:00:00Z",
+      updated_at: "2026-09-07T00:00:00Z",
+    });
+
+    // Case 4: invalid string
+    rows.push({
+      __table: "clients",
+      id: "client-invalid-str",
+      user_id: "user-1",
+      opportunity_ids: ["job-1"],
+      source: "test",
+      source_url: "https://example.com/client",
+      stage: "discovered",
+      fit_score: 80,
+      legitimacy_score: 80,
+      priority_score: 80,
+      summary: "Client with invalid string delivery days",
+      needs: [],
+      objections: [],
+      approach_angle: "Approach",
+      suggested_delivery_days: "not-a-number",
+      next_action: "Act",
+      created_at: "2026-09-07T00:00:00Z",
+      updated_at: "2026-09-07T00:00:00Z",
+    });
+
+    // Case 5: null value
+    rows.push({
+      __table: "clients",
+      id: "client-null",
+      user_id: "user-1",
+      opportunity_ids: ["job-1"],
+      source: "test",
+      source_url: "https://example.com/client",
+      stage: "discovered",
+      fit_score: 80,
+      legitimacy_score: 80,
+      priority_score: 80,
+      summary: "Client with null delivery days",
+      needs: [],
+      objections: [],
+      approach_angle: "Approach",
+      suggested_delivery_days: null,
+      next_action: "Act",
+      created_at: "2026-09-07T00:00:00Z",
+      updated_at: "2026-09-07T00:00:00Z",
+    });
+
+    const clients = await store.listClients();
+    const numericStrClient = clients.find((c) => c.id === "client-numeric-str");
+    const zeroClient = clients.find((c) => c.id === "client-zero");
+    const strZeroClient = clients.find((c) => c.id === "client-str-zero");
+    const invalidStrClient = clients.find((c) => c.id === "client-invalid-str");
+    const nullClient = clients.find((c) => c.id === "client-null");
+
+    expect(numericStrClient?.suggestedDeliveryDays).toBe(14);
+    expect(zeroClient?.suggestedDeliveryDays).toBe(0);
+    expect(strZeroClient?.suggestedDeliveryDays).toBe(0);
+    expect(invalidStrClient?.suggestedDeliveryDays).toBeUndefined();
+    expect(nullClient?.suggestedDeliveryDays).toBeUndefined();
+  });
+
   it("persists and filters pending approvals", async () => {
     const { client } = fakeClient();
     const store = new SupabasePersistence(client, "user-1");

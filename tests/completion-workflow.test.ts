@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { handleRequest } from "../src/server.js";
 import { createDealForFinalApproval, decideDeal } from "../src/application/deal-service.js";
 import { transitionApplication, type ApplicationRecord } from "../src/domain/application-tracking.js";
 import { transitionDealApproval } from "../src/domain/deal.js";
@@ -250,7 +251,6 @@ describe("completion workflow end-to-end", () => {
     });
 
     it("Scenario R: Malformed API request error handling", async () => {
-      const { handleRequest } = await import("../src/server.js");
       let statusCode = 0;
       let bodyText = "";
       const req: any = {
