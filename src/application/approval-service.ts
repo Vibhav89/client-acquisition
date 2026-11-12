@@ -1,4 +1,4 @@
-import { transitionApproval, type ApprovalRequest } from "../domain/approval.js";
+import { InvalidApprovalTransitionError, transitionApproval, type ApprovalRequest } from "../domain/approval.js";
 import { draftProposal } from "../domain/proposal.js";
 import type { CandidateProfile } from "../domain/opportunity.js";
 import type { PersonalAgentProfile } from "../domain/master-profile.js";
@@ -7,6 +7,16 @@ import { sanitizeProposalInput } from "../domain/security.js";
 import type { PersistencePort } from "../domain/persistence.js";
 import type { EventHistoryPort } from "../domain/event-history.js";
 import { createHistoryEvent } from "../domain/event-history.js";
+
+export { InvalidApprovalTransitionError };
+
+export class PendingApprovalNotFoundError extends Error {
+  readonly code = "PENDING_APPROVAL_NOT_FOUND" as const;
+  constructor(id: string) {
+    super(`Pending approval not found: ${id}`);
+    this.name = "PendingApprovalNotFoundError";
+  }
+}
 
 export interface ApprovalService {
   createForRadar(result: RadarResult, profile: CandidateProfile | PersonalAgentProfile, now?: string): Promise<ApprovalRequest[]>;
@@ -70,7 +80,7 @@ export class DefaultApprovalService implements ApprovalService {
 
   private async findPending(id: string): Promise<ApprovalRequest> {
     const request = (await this.persistence.listPendingApprovals()).find((item) => item.id === id);
-    if (!request) throw new Error(`Pending approval not found: ${id}`);
+    if (!request) throw new PendingApprovalNotFoundError(id);
     return request;
   }
 }

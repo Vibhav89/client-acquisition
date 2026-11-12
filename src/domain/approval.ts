@@ -17,9 +17,17 @@ const transitions: Record<ApprovalState, readonly ApprovalState[]> = {
   expired: [],
 };
 
+export class InvalidApprovalTransitionError extends Error {
+  readonly code = "INVALID_APPROVAL_TRANSITION" as const;
+  constructor(fromState: ApprovalState, toState: ApprovalState) {
+    super(`Invalid approval transition: ${fromState} -> ${toState}`);
+    this.name = "InvalidApprovalTransitionError";
+  }
+}
+
 export function transitionApproval(request: ApprovalRequest, next: ApprovalState, now = new Date().toISOString()): ApprovalRequest {
   if (!transitions[request.state].includes(next)) {
-    throw new Error(`Invalid approval transition: ${request.state} -> ${next}`);
+    throw new InvalidApprovalTransitionError(request.state, next);
   }
   return {
     ...request,
